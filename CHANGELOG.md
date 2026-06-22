@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Release / tooling
+
+- The package is published as **`@yakov/vue-gantt`** (scoped, public access).
+- GitHub Actions: `CI` runs the quality gates (oxlint, eslint, unit tests,
+  type-check + library build) on pushes to `develop`/`main` and on PRs; `Release`
+  re-runs the gates, checks the tag matches `package.json`, and publishes to npm
+  with provenance when a GitHub Release is published (needs the `NPM_TOKEN` secret).
+
 ### Added
 
 - **Progress drag** — drag a handle on the bar to change a task's progress

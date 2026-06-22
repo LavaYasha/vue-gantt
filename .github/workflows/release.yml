@@ -1,0 +1,57 @@
+name: Release
+
+# Publish to npm when a GitHub Release is published.
+# Create a release whose tag is `v<version>` matching package.json (e.g. v0.1.0).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Sets up an .npmrc pointing at the public registry + NODE_AUTH_TOKEN.
+      - name: Setup Node (npm registry)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # --- Quality gates (must pass before publishing) ---
+      - name: Lint (oxlint)
+        run: bunx oxlint .
+      - name: Lint (eslint)
+        run: bunx eslint .
+      - name: Unit tests
+        run: bunx vitest run
+
+      - name: Verify package version matches the release tag
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "package.json=$PKG release tag=$TAG"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG) does not match release tag ($TAG)"
+            exit 1
+          fi
+
+      # `prepack` builds the library (type-check + Vite + .d.ts) before packing.
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
