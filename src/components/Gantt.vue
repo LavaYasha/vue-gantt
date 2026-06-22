@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { GanttGroupToggleEvent, GanttMoveEvent, GanttRootProps } from '../types'
+import type {
+  GanttCellEvent,
+  GanttColumnEvent,
+  GanttDependencyEvent,
+  GanttGroupToggleEvent,
+  GanttMoveEvent,
+  GanttRootProps,
+  GanttRowEvent,
+  GanttTaskEvent,
+} from '../types'
 import GanttRoot from './GanttRoot.vue'
 import GanttView from './GanttView.vue'
 
@@ -12,6 +21,19 @@ const props = defineProps<GanttRootProps & {
 const emit = defineEmits<{
   move: [event: GanttMoveEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
+  'task-click': [event: GanttTaskEvent]
+  'task-dblclick': [event: GanttTaskEvent]
+  'task-contextmenu': [event: GanttTaskEvent]
+  'milestone-click': [event: GanttTaskEvent]
+  'milestone-dblclick': [event: GanttTaskEvent]
+  'milestone-contextmenu': [event: GanttTaskEvent]
+  'row-click': [event: GanttRowEvent]
+  'row-dblclick': [event: GanttRowEvent]
+  'row-contextmenu': [event: GanttRowEvent]
+  'cell-click': [event: GanttCellEvent]
+  'cell-dblclick': [event: GanttCellEvent]
+  'column-click': [event: GanttColumnEvent]
+  'dependency-click': [event: GanttDependencyEvent]
 }>()
 
 defineSlots<{
@@ -43,6 +65,19 @@ const rootProps = computed<GanttRootProps>(() => {
     v-bind="rootProps"
     @move="emit('move', $event)"
     @group-toggle="emit('group-toggle', $event)"
+    @task-click="emit('task-click', $event)"
+    @task-dblclick="emit('task-dblclick', $event)"
+    @task-contextmenu="emit('task-contextmenu', $event)"
+    @milestone-click="emit('milestone-click', $event)"
+    @milestone-dblclick="emit('milestone-dblclick', $event)"
+    @milestone-contextmenu="emit('milestone-contextmenu', $event)"
+    @row-click="emit('row-click', $event)"
+    @row-dblclick="emit('row-dblclick', $event)"
+    @row-contextmenu="emit('row-contextmenu', $event)"
+    @cell-click="emit('cell-click', $event)"
+    @cell-dblclick="emit('cell-dblclick', $event)"
+    @column-click="emit('column-click', $event)"
+    @dependency-click="emit('dependency-click', $event)"
   >
     <GanttView :height="height">
       <template v-if="$slots.corner" #corner><slot name="corner" /></template>

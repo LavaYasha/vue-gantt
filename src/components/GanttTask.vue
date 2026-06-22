@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGanttItem, type GanttItemProps } from '../composables/useGanttItem'
+import type { GanttTaskEvent } from '../types'
 
 const props = defineProps<GanttItemProps>()
+
+const emit = defineEmits<{
+  click: [event: GanttTaskEvent]
+  dblclick: [event: GanttTaskEvent]
+  contextmenu: [event: GanttTaskEvent]
+}>()
 
 const {
   ctx,
@@ -11,6 +18,7 @@ const {
   left,
   width,
   dragging,
+  moved,
   draggable,
   onPointerDown,
   ghost,
@@ -18,6 +26,24 @@ const {
   overlapping,
   hidden,
 } = useGanttItem(props, { type: 'task' })
+
+// Click fires after a drag's pointerup; skip it so a drag isn't read as a click.
+function onClick(event: MouseEvent): void {
+  if (moved.value) return
+  const payload: GanttTaskEvent = { task: resolved.value, event }
+  emit('click', payload)
+  ctx.dispatch('task-click', payload)
+}
+function onDblclick(event: MouseEvent): void {
+  const payload: GanttTaskEvent = { task: resolved.value, event }
+  emit('dblclick', payload)
+  ctx.dispatch('task-dblclick', payload)
+}
+function onContextmenu(event: MouseEvent): void {
+  const payload: GanttTaskEvent = { task: resolved.value, event }
+  emit('contextmenu', payload)
+  ctx.dispatch('task-contextmenu', payload)
+}
 
 const overlapMode = computed(() => ctx.config.value.overlap)
 const barStyle = computed(() => ({ left: `${left.value}px`, width: `${width.value}px` }))
@@ -55,6 +81,9 @@ const labelStyle = computed(() =>
       :data-draggable="draggable || undefined"
       :style="barStyle"
       @pointerdown="onPointerDown"
+      @click="onClick"
+      @dblclick="onDblclick"
+      @contextmenu="onContextmenu"
     >
       <slot :task="resolved" :progress="resolved.progress">
         <div
@@ -84,6 +113,9 @@ const labelStyle = computed(() =>
   right: 0;
   display: flex;
   align-items: center;
+  /* The full-width band is transparent to pointers; only the bar itself reacts,
+     so clicks on empty parts of the row reach the grid (cell-click). */
+  pointer-events: none;
 }
 
 /* Lift the row above its neighbours while dragging. */
@@ -101,6 +133,7 @@ const labelStyle = computed(() =>
   border-radius: var(--gantt-bar-radius, 4px);
   background: var(--gantt-bar-bg, #c7d2fe);
   overflow: hidden;
+  pointer-events: auto;
 }
 
 /* Overlap mode: overlapping bars become translucent so the shared span blends. */

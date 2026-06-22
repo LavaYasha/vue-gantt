@@ -25,15 +25,21 @@ import { GANTT_CONTEXT, GANTT_DEFAULTS, normalizeRow, toDate } from '../context'
 import { conflictSegments, layoutGroups, type GroupMeta } from '../layout'
 import type {
   GanttBand,
+  GanttCellEvent,
   GanttColumn,
+  GanttColumnEvent,
   GanttConfig,
   GanttConflict,
   GanttContext,
+  GanttDependencyEvent,
+  GanttEventMap,
   GanttGroup,
   GanttGroupToggleEvent,
   GanttMoveEvent,
   GanttRootProps,
   GanttRow,
+  GanttRowEvent,
+  GanttTaskEvent,
   GanttUnit,
   GanttViewport,
   ResolvedGroup,
@@ -66,7 +72,26 @@ const props = withDefaults(defineProps<GanttRootProps>(), {
 const emit = defineEmits<{
   move: [event: GanttMoveEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
+  'task-click': [event: GanttTaskEvent]
+  'task-dblclick': [event: GanttTaskEvent]
+  'task-contextmenu': [event: GanttTaskEvent]
+  'milestone-click': [event: GanttTaskEvent]
+  'milestone-dblclick': [event: GanttTaskEvent]
+  'milestone-contextmenu': [event: GanttTaskEvent]
+  'row-click': [event: GanttRowEvent]
+  'row-dblclick': [event: GanttRowEvent]
+  'row-contextmenu': [event: GanttRowEvent]
+  'cell-click': [event: GanttCellEvent]
+  'cell-dblclick': [event: GanttCellEvent]
+  'column-click': [event: GanttColumnEvent]
+  'dependency-click': [event: GanttDependencyEvent]
 }>()
+
+// Bubble child interactions up as the matching chart event. Components call this
+// via the context so prop-driven `<Gantt>` consumers can listen at the root.
+function dispatch<K extends keyof GanttEventMap>(name: K, payload: GanttEventMap[K]): void {
+  ;(emit as (n: string, p: unknown) => void)(name, payload)
+}
 
 const {
   registerGroup,
@@ -364,6 +389,7 @@ const context: GanttContext = {
   registerTask,
   unregisterTask,
   moveTask: (event) => emit('move', event),
+  dispatch,
   viewport,
   setViewport,
 }

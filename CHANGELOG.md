@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Interaction events** — components now surface their pointer interactions both
+  on themselves (declarative usage) and aggregated on `GanttRoot`/`Gantt`
+  (prop-driven usage), routed through a new `context.dispatch`:
+  - `task-click` / `task-dblclick` / `task-contextmenu` (`GanttTask`),
+  - `milestone-click` / `milestone-dblclick` / `milestone-contextmenu`
+    (`GanttMilestone`),
+  - `row-click` / `row-dblclick` / `row-contextmenu` (sidebar, `GanttTaskList`),
+  - `cell-click` / `cell-dblclick` (empty body cell → `{ row, date }`,
+    `GanttGrid`),
+  - `column-click` (timeline header → `{ column, tier }`, `GanttTimeline`),
+  - `dependency-click` (arrow → `{ from, to }`, `GanttDependencies`).
+  - A click that follows a drag is suppressed (drag ≠ click). New payload types
+    (`GanttTaskEvent`, `GanttRowEvent`, `GanttCellEvent`, `GanttColumnEvent`,
+    `GanttDependencyEvent`) and a `GanttEventMap` are exported.
 - **Row grouping** — an optional third level above rows. Rows referencing the
   same `groupId` (with the `groups` prop carrying labels + initial `collapsed`)
   render under a collapsible header band in the sidebar:

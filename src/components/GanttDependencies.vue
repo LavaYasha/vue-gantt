@@ -1,9 +1,22 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 import { useGanttContext } from '../composables/useGanttContext'
-import type { ResolvedTask } from '../types'
+import type { GanttDependencyEvent, ResolvedTask } from '../types'
 
-const { tasks, contentWidth, contentHeight, dateToX, taskBand } = useGanttContext()
+const { tasks, contentWidth, contentHeight, dateToX, taskBand, dispatch } = useGanttContext()
+
+const emit = defineEmits<{
+  'dependency-click': [event: GanttDependencyEvent]
+}>()
+
+function onLinkClick(fromId: string, toId: string, event: MouseEvent): void {
+  const byId = new Map(tasks.value.map((t) => [t.id, t]))
+  const from = byId.get(fromId)
+  const to = byId.get(toId)
+  if (!from || !to) return
+  emit('dependency-click', { from, to, event })
+  dispatch('dependency-click', { from, to, event })
+}
 
 const markerId = `gantt-arrow-${useId()}`
 
@@ -89,6 +102,7 @@ const links = computed<DependencyLink[]>(() => {
         :data-from="link.from"
         :data-to="link.to"
         :marker-end="`url(#${markerId})`"
+        @click="onLinkClick(link.from, link.to, $event)"
       />
     </slot>
   </svg>
@@ -107,6 +121,8 @@ const links = computed<DependencyLink[]>(() => {
   fill: none;
   stroke: var(--gantt-dependency-color, #94a3b8);
   stroke-width: var(--gantt-dependency-width, 1.5);
+  /* The SVG layer is click-through; let the arrow stroke itself catch clicks. */
+  pointer-events: stroke;
 }
 
 .gantt-dependencies__marker path {
