@@ -28,8 +28,14 @@ export interface DragPreview {
 export function useGanttDrag(options: DragOptions) {
   const ctx = useGanttContext()
   const dragging = ref(false)
+  // True once a press has moved past the threshold — lets a bar distinguish a
+  // genuine drag from a click (the synthetic click fires right after pointerup,
+  // before the next pointerdown resets this).
+  const moved = ref(false)
   const dx = ref(0)
   const dy = ref(0)
+
+  const MOVE_THRESHOLD = 3 // px before a press counts as a drag, not a click
 
   /** Drag is available if either axis is unlocked. */
   const enabled = computed(() => ctx.config.value.draggable || ctx.config.value.rowMovable)
@@ -42,6 +48,7 @@ export function useGanttDrag(options: DragOptions) {
   function onPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || !enabled.value) return
     dragging.value = true
+    moved.value = false
     originX = event.clientX
     originY = event.clientY
     dx.value = 0
@@ -64,6 +71,9 @@ export function useGanttDrag(options: DragOptions) {
     if (!dragging.value) return
     dx.value = ctx.config.value.draggable ? event.clientX - originX : 0
     dy.value = ctx.config.value.rowMovable ? event.clientY - originY : 0
+    if (Math.abs(dx.value) > MOVE_THRESHOLD || Math.abs(dy.value) > MOVE_THRESHOLD) {
+      moved.value = true
+    }
   }
 
   function onPointerUp(): void {
@@ -169,5 +179,5 @@ export function useGanttDrag(options: DragOptions) {
 
   onUnmounted(teardown)
 
-  return { dragging, dx, dy, enabled, preview, previewLabel, onPointerDown }
+  return { dragging, moved, dx, dy, enabled, preview, previewLabel, onPointerDown }
 }

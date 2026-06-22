@@ -268,6 +268,67 @@ export interface GanttGroupToggleEvent {
   collapsed: boolean
 }
 
+/** Payload for pointer interactions on a task bar or milestone marker. */
+export interface GanttTaskEvent {
+  /** The task/milestone that was interacted with. */
+  task: ResolvedTask
+  /** The originating DOM event. */
+  event: MouseEvent
+}
+
+/** Payload for pointer interactions on a sidebar row. */
+export interface GanttRowEvent {
+  row: ResolvedRow
+  event: MouseEvent
+}
+
+/** Payload for pointer interactions on an empty body cell (no bar under it). */
+export interface GanttCellEvent {
+  /** The row whose band was clicked. */
+  row: ResolvedRow
+  /** The date under the pointer (derived from the x position). */
+  date: Date
+  event: MouseEvent
+}
+
+/** Payload for pointer interactions on a timeline header column. */
+export interface GanttColumnEvent {
+  column: GanttColumn
+  /** The tier (time group) the clicked column belongs to. */
+  tier: GanttUnit
+  event: MouseEvent
+}
+
+/** Payload for pointer interactions on a dependency arrow. */
+export interface GanttDependencyEvent {
+  /** The predecessor task (arrow tail). */
+  from: ResolvedTask
+  /** The successor task (arrow head). */
+  to: ResolvedTask
+  event: MouseEvent
+}
+
+/**
+ * Every aggregated event the chart can surface, mapped to its payload. Used to
+ * type `GanttRoot`/`Gantt`'s `emits` and the context `dispatch` helper that
+ * child components call to bubble interactions up to the root.
+ */
+export interface GanttEventMap {
+  'task-click': GanttTaskEvent
+  'task-dblclick': GanttTaskEvent
+  'task-contextmenu': GanttTaskEvent
+  'milestone-click': GanttTaskEvent
+  'milestone-dblclick': GanttTaskEvent
+  'milestone-contextmenu': GanttTaskEvent
+  'row-click': GanttRowEvent
+  'row-dblclick': GanttRowEvent
+  'row-contextmenu': GanttRowEvent
+  'cell-click': GanttCellEvent
+  'cell-dblclick': GanttCellEvent
+  'column-click': GanttColumnEvent
+  'dependency-click': GanttDependencyEvent
+}
+
 /** Scroll/measurement state of the chart's scroll viewport. */
 export interface GanttViewport {
   scrollLeft: number
@@ -342,4 +403,10 @@ export interface GanttContext {
   unregisterTask: (id: string) => void
   /** Emit a completed drag (called by `GanttTask`/`GanttMilestone`). */
   moveTask: (event: GanttMoveEvent) => void
+  /**
+   * Bubble an interaction up to `GanttRoot`, which re-emits it as the matching
+   * chart event (so prop-driven `<Gantt>` consumers can listen for clicks on
+   * internally-rendered tasks, rows, cells, columns and dependencies).
+   */
+  dispatch: <K extends keyof GanttEventMap>(name: K, payload: GanttEventMap[K]) => void
 }

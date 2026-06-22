@@ -86,7 +86,7 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
   const baseLeft = computed(() => ctx.dateToX(resolved.value.start))
 
   // Drag & drop: the original stays put; a live preview drives a translucent ghost.
-  const { dragging, enabled: draggable, preview, previewLabel, onPointerDown } = useGanttDrag({
+  const { dragging, moved, enabled: draggable, preview, previewLabel, onPointerDown } = useGanttDrag({
     resolved,
     baseLeft,
   })
@@ -126,6 +126,7 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
     left,
     width,
     dragging,
+    moved,
     draggable,
     onPointerDown,
     ghost,
