@@ -31,7 +31,11 @@ export function useGanttLink(options: LinkOptions): GanttLinkApi {
 
   function onPointerMove(event: PointerEvent): void {
     if (!draft.value) return
-    draft.value = { ...draft.value, pointer: { x: event.clientX, y: event.clientY } }
+    const pointer = { x: event.clientX, y: event.clientY }
+    const hit = taskIdAt(pointer)
+    // Highlight the hovered task as a drop target (never the anchor itself).
+    const over = hit && hit !== draft.value.anchorId ? hit : null
+    draft.value = { ...draft.value, pointer, over }
   }
 
   function onPointerUp(): void {
@@ -40,6 +44,9 @@ export function useGanttLink(options: LinkOptions): GanttLinkApi {
 
   function beginLink(args: GanttBeginLinkArgs): void {
     draft.value = { ...args }
+    // Suppress text selection / show a linking cursor for the whole drag.
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'crosshair'
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
   }
@@ -47,14 +54,14 @@ export function useGanttLink(options: LinkOptions): GanttLinkApi {
   function teardown(): void {
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
     draft.value = null
   }
 
-  /** Task id under the current pointer, or `null` over empty space. */
-  function resolveTarget(): string | null {
-    const d = draft.value
-    if (!d) return null
-    const el = document.elementFromPoint(d.pointer.x, d.pointer.y)
+  /** Task id under a client point, or `null` over empty space. */
+  function taskIdAt(pointer: { x: number; y: number }): string | null {
+    const el = document.elementFromPoint(pointer.x, pointer.y)
     const host = (el?.closest('[data-id]') as HTMLElement | null) ?? null
     return host?.dataset.id ?? null
   }
@@ -67,7 +74,7 @@ export function useGanttLink(options: LinkOptions): GanttLinkApi {
   function endLink(explicit?: string | null): void {
     const d = draft.value
     if (!d) return
-    const target = explicit !== undefined ? explicit : resolveTarget()
+    const target = explicit !== undefined ? explicit : taskIdAt(d.pointer)
     if (target) emitChange(d, target)
     teardown()
   }

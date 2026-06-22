@@ -157,7 +157,7 @@ const draftPath = computed<string | null>(() => {
         :cx="link.head.x"
         :cy="link.head.y"
         :r="4"
-        @pointerdown.stop="onEndpointDown(link, $event)"
+        @pointerdown.stop.prevent="onEndpointDown(link, $event)"
       />
     </template>
 

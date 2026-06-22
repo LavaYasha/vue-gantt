@@ -30,6 +30,8 @@ const {
 
 const resizable = computed(() => ctx.config.value.resizable)
 const linkable = computed(() => ctx.config.value.linkable)
+// Highlight this bar while a dependency drag hovers it as a drop target.
+const linkTarget = computed(() => ctx.linkDraft.value?.over === resolved.value.id)
 
 // Start dragging a new finish-to-start dependency from this task's finish edge.
 function onConnectorDown(event: PointerEvent): void {
@@ -93,6 +95,7 @@ const labelStyle = computed(() =>
       class="gantt-bar"
       :data-id="resolved.id"
       :data-draggable="draggable || undefined"
+      :data-link-target="linkTarget || undefined"
       :style="barStyle"
       @pointerdown="onPointerDown"
       @click="onClick"
@@ -119,7 +122,7 @@ const labelStyle = computed(() =>
         v-if="linkable"
         class="gantt-bar__connector"
         title="Drag to link"
-        @pointerdown.stop="onConnectorDown"
+        @pointerdown.stop.prevent="onConnectorDown"
       />
     </div>
 
@@ -198,6 +201,12 @@ const labelStyle = computed(() =>
   cursor: crosshair;
   touch-action: none;
   z-index: 2;
+}
+
+/* Drop-target affordance while a dependency is being dragged onto this bar. */
+.gantt-bar[data-link-target] {
+  outline: var(--gantt-link-target-outline, 2px solid var(--gantt-progress-bg, #6366f1));
+  outline-offset: 1px;
 }
 
 /* Overlap mode: overlapping bars become translucent so the shared span blends. */

@@ -418,7 +418,10 @@ export interface GanttBeginLinkArgs {
 }
 
 /** Live state of an in-progress dependency drag. */
-export interface GanttLinkDraft extends GanttBeginLinkArgs {}
+export interface GanttLinkDraft extends GanttBeginLinkArgs {
+  /** Task id under the pointer (a candidate drop target), or `null`. */
+  over?: string | null
+}
 
 /**
  * The value provided by `GanttRoot` and consumed by every Gantt component
