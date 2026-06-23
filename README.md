@@ -1,11 +1,11 @@
 # vue-gantt
 
-[![npm version](https://img.shields.io/npm/v/@yakov_dizzy/vue-gantt.svg)](https://www.npmjs.com/package/@yakov_dizzy/vue-gantt)
-[![npm downloads](https://img.shields.io/npm/dm/@yakov_dizzy/vue-gantt.svg)](https://www.npmjs.com/package/@yakov_dizzy/vue-gantt)
+[![npm version](https://img.shields.io/npm/v/@dizzy_yakov/vue-gantt.svg)](https://www.npmjs.com/package/@dizzy_yakov/vue-gantt)
+[![npm downloads](https://img.shields.io/npm/dm/@dizzy_yakov/vue-gantt.svg)](https://www.npmjs.com/package/@dizzy_yakov/vue-gantt)
 [![CI](https://github.com/LavaYasha/vue-gantt/actions/workflows/ci.yml/badge.svg)](https://github.com/LavaYasha/vue-gantt/actions/workflows/ci.yml)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@yakov_dizzy/vue-gantt)](https://bundlephobia.com/package/@yakov_dizzy/vue-gantt)
-[![types](https://img.shields.io/npm/types/@yakov_dizzy/vue-gantt.svg)](https://www.npmjs.com/package/@yakov_dizzy/vue-gantt)
-[![license](https://img.shields.io/npm/l/@yakov_dizzy/vue-gantt.svg)](./LICENSE)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@dizzy_yakov/vue-gantt)](https://bundlephobia.com/package/@dizzy_yakov/vue-gantt)
+[![types](https://img.shields.io/npm/types/@dizzy_yakov/vue-gantt.svg)](https://www.npmjs.com/package/@dizzy_yakov/vue-gantt)
+[![license](https://img.shields.io/npm/l/@dizzy_yakov/vue-gantt.svg)](./LICENSE)
 
 A **headless, composable Gantt chart for Vue 3**. It ships only structural
 layout — every colour, size and font is a CSS variable — so it drops into any
@@ -30,19 +30,19 @@ design system. One runtime dependency (`date-fns`), fully typed.
 ## Install
 
 ```sh
-bun add @yakov_dizzy/vue-gantt
+bun add @dizzy_yakov/vue-gantt
 ```
 
 ```sh
-npm install @yakov_dizzy/vue-gantt
+npm install @dizzy_yakov/vue-gantt
 ```
 
 ```sh
-pnpm add @yakov_dizzy/vue-gantt
+pnpm add @dizzy_yakov/vue-gantt
 ```
 
 ```sh
-yarn add @yakov_dizzy/vue-gantt
+yarn add @dizzy_yakov/vue-gantt
 ```
 
 > `vue` `^3.5` is a peer dependency.
@@ -51,7 +51,7 @@ Optionally import the default theme (CSS variables); skip it to style from
 scratch:
 
 ```ts
-import '@yakov_dizzy/vue-gantt/styles'
+import '@dizzy_yakov/vue-gantt/styles'
 ```
 
 ## Quick start
@@ -61,9 +61,9 @@ list of tasks** plotted on its band (so a row can hold several bars).
 
 ```vue
 <script setup lang="ts">
-import { Gantt, applyMove, type GanttRowData, type GanttMoveEvent } from '@yakov_dizzy/vue-gantt'
+import { Gantt, applyMove, type GanttRowData, type GanttMoveEvent } from '@dizzy_yakov/vue-gantt'
 import { ref } from 'vue'
-import '@yakov_dizzy/vue-gantt/styles'
+import '@dizzy_yakov/vue-gantt/styles'
 
 const rows = ref<GanttRowData[]>([
   {
@@ -253,7 +253,7 @@ import {
   flattenTasks, findTask, findRow, tasksExtent,       // lookups
   getDependents, detectCycles, topologicalOrder,
   criticalPath, autoSchedule, rollupProgress, validateRows,
-} from '@yakov_dizzy/vue-gantt'
+} from '@dizzy_yakov/vue-gantt'
 ```
 
 ## Row grouping
