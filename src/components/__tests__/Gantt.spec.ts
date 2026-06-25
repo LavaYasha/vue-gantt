@@ -648,6 +648,23 @@ describe('section slot scoped payloads', () => {
     expect((cap.groups as unknown[]).length).toBeGreaterThan(0)
   })
 
+  it('bars → { tasks } array of the plotted (visible) tasks', () => {
+    const { cap } = capture('bars')
+    expect(Array.isArray(cap.tasks)).toBe(true)
+    expect((cap.tasks as { id: string }[]).map((t) => t.id).sort()).toEqual(['a', 'b', 'm'])
+  })
+
+  it('bars slot replaces the default task/milestone layer', () => {
+    const wrapper = mount(Gantt, {
+      props: { rows: groupedRows, groups, unit: 'day' },
+      slots: { bars: () => h('i', { class: 'custom-bars' }) },
+    })
+    expect(wrapper.find('.custom-bars').exists()).toBe(true)
+    // Default bars/milestones are no longer rendered.
+    expect(wrapper.find('.gantt-bar').exists()).toBe(false)
+    expect(wrapper.find('.gantt-milestone').exists()).toBe(false)
+  })
+
   it('dependencies → { tasks } array with every task', () => {
     const { cap } = capture('dependencies')
     expect(Array.isArray(cap.tasks)).toBe(true)
@@ -686,6 +703,7 @@ describe('section slot scoped payloads', () => {
       expect(wrapper.find('.gantt-timeline').exists()).toBe(true)
       expect(wrapper.find('.gantt-task-list').exists()).toBe(true)
       expect(wrapper.find('.gantt-grid').exists()).toBe(true)
+      expect(wrapper.find('.gantt-bar').exists()).toBe(true)
       expect(wrapper.find('.gantt-dependencies').exists()).toBe(true)
       expect(wrapper.find('.gantt-today').exists()).toBe(true)
       // No probe leaked in.

@@ -57,6 +57,7 @@ defineSlots<{
   column?: (props: { column: unknown; tier: unknown }) => unknown
   bar?: (props: { task: unknown; progress: number }) => unknown
   milestone?: (props: { task: unknown }) => unknown
+  bars?: (props: { tasks: unknown }) => unknown
   grid?: (props: { columns: unknown; rows: unknown }) => unknown
   conflicts?: (props: { conflicts: unknown }) => unknown
   dependencies?: (props: { tasks: unknown }) => unknown
@@ -111,6 +112,7 @@ defineExpose({
       <template v-if="$slots.timeline" #timeline="slotProps"><slot name="timeline" v-bind="slotProps" /></template>
       <template v-if="$slots.sidebar" #sidebar="slotProps"><slot name="sidebar" v-bind="slotProps" /></template>
       <template v-if="$slots.grid" #grid="slotProps"><slot name="grid" v-bind="slotProps" /></template>
+      <template v-if="$slots.bars" #bars="slotProps"><slot name="bars" v-bind="slotProps" /></template>
       <template v-if="$slots['group-bars']" #group-bars="slotProps">
         <slot name="group-bars" v-bind="slotProps" />
       </template>

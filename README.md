@@ -108,6 +108,7 @@ slots for overriding any part. Every slot is scoped — its props give you the s
 | `timeline`     | `{ config, visibleColumnsFor }`                      | `<GanttTimeline>` (the axis header) |
 | `sidebar`      | `{ rows, groups }`                                   | `<GanttTaskList>` (the row labels) |
 | `grid`         | `{ columns, rows }`                                  | `<GanttGrid>` (the body grid)     |
+| `bars`         | `{ tasks }`                                          | the task bar / milestone layer    |
 | `group-bars`   | `{ groups }`                                         | `<GanttGroupBar>` (group rollups) |
 | `conflicts`    | `{ conflicts }`                                      | `<GanttConflicts>`                |
 | `dependencies` | `{ tasks }`                                          | `<GanttDependencies>`             |
@@ -117,9 +118,9 @@ slots for overriding any part. Every slot is scoped — its props give you the s
 `visibleColumnsFor` is `(tier: GanttUnit) => GanttColumn[]` (windowed), `dateToX`
 is `(date: Date \| string \| number) => number`, `rows`/`groups` are the visible
 `ResolvedRow[]` / `ResolvedGroup[]`, `columns` are the visible base-unit
-`GanttColumn[]`, `tasks` are all `ResolvedTask[]`, `today` is the configured
-reference `Date`, and `conflicts` is `GanttConflict[]` (empty unless
-`overlap: 'conflict'`).
+`GanttColumn[]`, `tasks` are `ResolvedTask[]` (all of them for `dependencies`,
+the plotted/visible ones for `bars`), `today` is the configured reference `Date`,
+and `conflicts` is `GanttConflict[]` (empty unless `overlap: 'conflict'`).
 
 **Leaf slots** customize a single repeated item: `row` (`{ row, index }`),
 `group` (`{ group, collapsed, toggle }`), `groupBar` (`{ group }`), `column`

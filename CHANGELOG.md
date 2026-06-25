@@ -118,9 +118,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   override no longer has to reach into `useGanttContext`: `corner {config}`,
   `timeline {config, visibleColumnsFor}`, `sidebar {rows, groups}`, `grid
   {columns, rows}`, `group-bars {groups}`, `dependencies {tasks}`, `today {today,
-  dateToX}`, `body-extra {contentWidth, contentHeight}`. The `group-bars` slot is
-  now also forwarded through the `<Gantt>` wrapper (previously only on
-  `GanttView`).
+  dateToX}`, `body-extra {contentWidth, contentHeight}`. A new `bars {tasks}` slot
+  wraps the task-bar / milestone layer so it can be replaced wholesale. The
+  `bars` and `group-bars` slots are now also forwarded through the `<Gantt>`
+  wrapper (previously only on `GanttView`).
 
 ### Fixed
 

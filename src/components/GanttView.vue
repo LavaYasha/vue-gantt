@@ -102,18 +102,20 @@ const scrollStyle = computed(() => ({
           </GanttGroupBar>
         </slot>
 
-        <template v-for="task in visibleTasks" :key="task.id">
-          <GanttMilestone v-if="task.type === 'milestone'" :task="task">
-            <template v-if="$slots.milestone" #default="slotProps">
-              <slot name="milestone" v-bind="slotProps" />
-            </template>
-          </GanttMilestone>
-          <GanttTask v-else :task="task">
-            <template v-if="$slots.bar" #default="slotProps">
-              <slot name="bar" v-bind="slotProps" />
-            </template>
-          </GanttTask>
-        </template>
+        <slot name="bars" :tasks="visibleTasks">
+          <template v-for="task in visibleTasks" :key="task.id">
+            <GanttMilestone v-if="task.type === 'milestone'" :task="task">
+              <template v-if="$slots.milestone" #default="slotProps">
+                <slot name="milestone" v-bind="slotProps" />
+              </template>
+            </GanttMilestone>
+            <GanttTask v-else :task="task">
+              <template v-if="$slots.bar" #default="slotProps">
+                <slot name="bar" v-bind="slotProps" />
+              </template>
+            </GanttTask>
+          </template>
+        </slot>
         <slot name="conflicts" :conflicts="conflicts">
           <GanttConflicts v-if="config.overlap === 'conflict'" />
         </slot>
