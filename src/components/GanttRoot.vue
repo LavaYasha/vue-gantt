@@ -518,6 +518,7 @@ const context: GanttContext = {
     emit('progress', event)
     emitModelUpdate((rows) => updateTask(rows, event.id, { progress: event.progress }))
   },
+  autoScroll: autoscroll.update,
   linkDraft,
   beginLink,
   endLink,
