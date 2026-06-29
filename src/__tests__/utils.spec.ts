@@ -6,6 +6,7 @@ import {
   autoSchedule,
   criticalPath,
   detectCycles,
+  filterRows,
   findRow,
   findTask,
   flattenTasks,
@@ -13,6 +14,7 @@ import {
   removeDependency,
   removeTask,
   rollupProgress,
+  sortRows,
   tasksExtent,
   topologicalOrder,
   updateTask,
@@ -35,6 +37,35 @@ describe('lookups & traversal', () => {
     expect(findTask(rows, 'b')?.row.id).toBe('r2')
     expect(findTask(rows, 'x')).toBeUndefined()
     expect(findRow(rows, 'r1')?.id).toBe('r1')
+  })
+})
+
+describe('sorting & filtering', () => {
+  it('sortRows orders by the comparator without mutating the input', () => {
+    const rows = sample()
+    const sorted = sortRows(rows, (a, b) => b.id.localeCompare(a.id))
+    expect(sorted.map(r => r.id)).toEqual(['r2', 'r1'])
+    // immutable: input order + array identity preserved
+    expect(rows.map(r => r.id)).toEqual(['r1', 'r2'])
+    expect(sorted).not.toBe(rows)
+  })
+
+  it('sortRows composes with row metrics (progress rollup)', () => {
+    const rows = sample()
+    const byProgressDesc = sortRows(
+      rows,
+      (a, b) => rollupProgress(b.tasks ?? []) - rollupProgress(a.tasks ?? []),
+    )
+    expect(byProgressDesc[0]!.id).toBe('r2') // r2 has progress 40, r1 has 0
+  })
+
+  it('filterRows keeps only matching rows without mutating the input', () => {
+    const rows = sample()
+    const onlyR2 = filterRows(rows, r => r.id === 'r2')
+    expect(onlyR2.map(r => r.id)).toEqual(['r2'])
+    expect(rows).toHaveLength(2)
+    expect(onlyR2).not.toBe(rows)
+    expect(filterRows(rows, () => false)).toEqual([])
   })
 })
 

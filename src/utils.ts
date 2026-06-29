@@ -35,6 +35,30 @@ export function findRow(rows: GanttRow[], id: string): GanttRow | undefined {
   return rows.find(r => r.id === id)
 }
 
+// --- Sorting & filtering ----------------------------------------------------
+
+/**
+ * Return rows sorted by `compare`, without mutating the input. The chart stays
+ * controlled: pass the result back as `rows` (the library re-derives each row's
+ * render order from the new array index). Build comparators from row data —
+ * e.g. by name (`a.name`), by earliest task (`tasksExtent([a])`), or by progress
+ * (`rollupProgress(a.tasks ?? [])`).
+ */
+export function sortRows(
+  rows: GanttRow[],
+  compare: (a: GanttRow, b: GanttRow) => number,
+): GanttRow[] {
+  return [...rows].sort(compare)
+}
+
+/**
+ * Return only the rows matching `predicate`, without mutating the input. Pass the
+ * result back as `rows` to show a filtered view (the library re-derives order).
+ */
+export function filterRows(rows: GanttRow[], predicate: (row: GanttRow) => boolean): GanttRow[] {
+  return rows.filter(predicate)
+}
+
 // --- Immutable edits --------------------------------------------------------
 
 /**
