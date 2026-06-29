@@ -30,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `sortRows` / `filterRows` data utilities — pure, immutable helpers to reorder or
+  filter `GanttRow[]` by a comparator/predicate (the chart stays controlled: pass
+  the result back as `rows`). Build comparators from row data, e.g. `tasksExtent`
+  (dates) or `rollupProgress` (progress).
 - Per-tier timeline label formatting. The `labelFormat` prop on `Gantt`/`GanttRoot`
   is now a `GanttLabelFormat`: a date-fns `string` (applied to the base unit only,
   as before), a per-tier map `Partial<Record<GanttUnit, string>>` (missing tiers

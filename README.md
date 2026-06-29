@@ -394,6 +394,8 @@ import {
   findTask,
   findRow,
   tasksExtent, // lookups
+  sortRows,
+  filterRows, // reorder / filter rows (immutable; pass the result back as `rows`)
   getDependents,
   detectCycles,
   topologicalOrder,

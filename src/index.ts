@@ -56,6 +56,8 @@ export {
   flattenTasks,
   findTask,
   findRow,
+  sortRows,
+  filterRows,
   applyMove,
   updateTask,
   addTask,
