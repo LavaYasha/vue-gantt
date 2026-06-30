@@ -39,6 +39,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as before), a per-tier map `Partial<Record<GanttUnit, string>>` (missing tiers
   keep their defaults), or a `(date, tier) => string` function for full control.
   The `GanttLabelFormat` type is exported from the package.
+- Opt-in **hover tooltip** on bars and milestones. Enable it with the `tooltip`
+  prop on `Gantt`/`GanttRoot`, or by providing the new scoped `tooltip` slot
+  (`{ task }`), which both enables the tooltip and overrides its content. The
+  default content is the name plus `start – end` and `progress%` for a bar, or the
+  name plus the date for a milestone; it is hidden while dragging. Themeable via
+  the new `--gantt-tooltip-bg` / `-color` / `-radius` / `-font-size` / `-shadow`
+  CSS variables (which inherit the drag-label look by default).
 
 ### Release / tooling
 
