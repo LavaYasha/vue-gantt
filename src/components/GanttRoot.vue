@@ -28,6 +28,7 @@ import { GANTT_CONTEXT, GANTT_DEFAULTS, normalizeRow, toDate } from '../context'
 import { elbowPath } from '../dependencyPaths'
 import { conflictSegments, layoutGroups, type GroupMeta } from '../layout'
 import { addDependency, applyMove, removeDependency, updateTask } from '../utils'
+import { DEFAULT_ZOOM_LEVELS } from '../zoom'
 import type {
   GanttBand,
   GanttCellEvent,
@@ -51,6 +52,8 @@ import type {
   GanttTaskEvent,
   GanttUnit,
   GanttViewport,
+  GanttZoomEvent,
+  GanttZoomLevel,
   ResolvedGroup,
   ResolvedRow,
   ResolvedTask,
@@ -82,6 +85,8 @@ const props = withDefaults(defineProps<GanttRootProps>(), {
   endDate: undefined,
   today: undefined,
   labelFormat: undefined,
+  zoomLevels: () => DEFAULT_ZOOM_LEVELS,
+  zoom: undefined,
 })
 
 const emit = defineEmits<{
@@ -90,6 +95,9 @@ const emit = defineEmits<{
   progress: [event: GanttProgressEvent]
   /** `v-model:rows` — emitted with the rows after applying a task change. */
   'update:rows': [rows: GanttRow[]]
+  /** `v-model:zoom` — emitted with the active zoom level id when it changes. */
+  'update:zoom': [id: string]
+  'zoom-change': [event: GanttZoomEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
   'dependency-create': [event: GanttDependencyChange]
   'dependency-remove': [event: GanttDependencyChange]
@@ -157,11 +165,69 @@ const TIER_RANK: Record<GanttUnit, number> = {
   minute: 6,
 }
 
-// Displayed time-group rows, deduped and ordered coarse → fine.
+// --- Zoom / view-mode -----------------------------------------------------
+// A zoom level is a preset bundle of `tiers` + `columnWidth`. State is
+// uncontrolled-with-v-model: an internal ref seeded from the `zoom` prop and
+// kept in sync with it, so `setZoom`/`zoomIn`/`zoomOut` work standalone while
+// `v-model:zoom` (or a static `:zoom`) still drives it. When no level is active
+// the chart falls back to the raw `tiers`/`columnWidth`/`unit` props (unchanged).
+const zoomLevels = computed<GanttZoomLevel[]>(() => props.zoomLevels)
+const zoomState = ref<string | undefined>(props.zoom)
+watch(
+  () => props.zoom,
+  v => {
+    if (v != null) zoomState.value = v
+  },
+)
+const activeZoom = computed<string | undefined>(() => zoomState.value)
+const activeIndex = computed<number>(() =>
+  zoomLevels.value.findIndex(l => l.id === activeZoom.value),
+)
+const activeLevel = computed<GanttZoomLevel | undefined>(() => zoomLevels.value[activeIndex.value])
+
+// The index `zoomIn`/`zoomOut` step from: the active level, or — when none is
+// active — the level whose base unit matches the current axis, else the coarsest.
+// `canZoomIn`/`canZoomOut` read from the same anchor, so a button's disabled
+// state always matches whether a click would move.
+const effectiveIndex = computed<number>(() => {
+  if (activeIndex.value >= 0) return activeIndex.value
+  const byUnit = zoomLevels.value.findIndex(l => l.tiers[l.tiers.length - 1] === baseUnit.value)
+  return byUnit < 0 ? 0 : byUnit
+})
+const canZoomIn = computed(() => effectiveIndex.value < zoomLevels.value.length - 1)
+const canZoomOut = computed(() => effectiveIndex.value > 0)
+
+function setZoom(id: string): void {
+  // Idempotent: re-selecting the active level (e.g. a clamped edge step) is a
+  // no-op and emits nothing.
+  if (id === zoomState.value) return
+  const level = zoomLevels.value.find(l => l.id === id)
+  if (!level) return
+  zoomState.value = id
+  emit('update:zoom', id)
+  emit('zoom-change', { id, level })
+}
+
+// Step `delta` levels (coarse→fine ordering: +1 = finer), clamped to the range.
+function step(delta: number): void {
+  const levels = zoomLevels.value
+  const next = Math.min(levels.length - 1, Math.max(0, effectiveIndex.value + delta))
+  const target = levels[next]
+  if (target) setZoom(target.id)
+}
+const zoomIn = (): void => step(1)
+const zoomOut = (): void => step(-1)
+
+// Displayed time-group rows, deduped and ordered coarse → fine. The active zoom
+// level's tiers win; otherwise the `tiers` prop (or `[unit]`).
 const tiers = computed<GanttUnit[]>(() => {
-  const requested = props.tiers?.length ? props.tiers : [props.unit]
+  const requested =
+    activeLevel.value?.tiers ?? (props.tiers?.length ? props.tiers : [props.unit])
   return [...new Set(requested)].sort((a, b) => TIER_RANK[a] - TIER_RANK[b])
 })
+
+// Pixel density: the active zoom level's columnWidth wins over the prop.
+const columnWidth = computed<number>(() => activeLevel.value?.columnWidth ?? props.columnWidth)
 
 // The finest displayed tier drives pixel density; the coarsest snaps the bounds.
 const baseUnit = computed<GanttUnit>(() => tiers.value[tiers.value.length - 1] ?? props.unit)
@@ -262,7 +328,7 @@ const end = computed<Date>(() => {
 
 const scale = useGanttScale({
   unit: baseUnit,
-  columnWidth: toRef(props, 'columnWidth'),
+  columnWidth,
   start,
   end,
   today,
@@ -272,7 +338,7 @@ const scale = useGanttScale({
 const config = computed<GanttConfig>(() => ({
   unit: baseUnit.value,
   tiers: tiers.value,
-  columnWidth: props.columnWidth,
+  columnWidth: columnWidth.value,
   rowHeight: props.rowHeight,
   headerRowHeight: props.headerRowHeight,
   groupHeaderHeight: props.groupHeaderHeight,
@@ -541,6 +607,13 @@ const context: GanttContext = {
   scrollToDate,
   scrollToTask,
   scrollToToday,
+  zoomLevels,
+  activeZoom,
+  canZoomIn,
+  canZoomOut,
+  setZoom,
+  zoomIn,
+  zoomOut,
   viewport,
   setViewport,
 }
@@ -548,7 +621,7 @@ const context: GanttContext = {
 provide(GANTT_CONTEXT, context)
 
 const rootStyle = computed(() => ({
-  '--gantt-column-width': `${props.columnWidth}px`,
+  '--gantt-column-width': `${columnWidth.value}px`,
   '--gantt-row-height': `${props.rowHeight}px`,
   '--gantt-group-header-height': `${props.groupHeaderHeight}px`,
   '--gantt-header-row-height': `${props.headerRowHeight}px`,
@@ -604,6 +677,10 @@ defineExpose({
   scrollToDate,
   scrollToTask,
   scrollToToday,
+  activeZoom,
+  setZoom,
+  zoomIn,
+  zoomOut,
 })
 </script>
 

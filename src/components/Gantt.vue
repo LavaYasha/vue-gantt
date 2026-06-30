@@ -15,6 +15,7 @@ import type {
   GanttRowEvent,
   GanttScrollOptions,
   GanttTaskEvent,
+  GanttZoomEvent,
 } from '../types'
 import GanttRoot from './GanttRoot.vue'
 import GanttView from './GanttView.vue'
@@ -31,6 +32,8 @@ const emit = defineEmits<{
   resize: [event: GanttResizeEvent]
   progress: [event: GanttProgressEvent]
   'update:rows': [rows: GanttRowData[]]
+  'update:zoom': [id: string]
+  'zoom-change': [event: GanttZoomEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
   'dependency-create': [event: GanttDependencyChange]
   'dependency-remove': [event: GanttDependencyChange]
@@ -84,6 +87,9 @@ defineExpose({
     root.value?.scrollToDate(date, options),
   scrollToTask: (id: string, options?: GanttScrollOptions) => root.value?.scrollToTask(id, options),
   scrollToToday: (options?: GanttScrollOptions) => root.value?.scrollToToday(options),
+  setZoom: (id: string) => root.value?.setZoom(id),
+  zoomIn: () => root.value?.zoomIn(),
+  zoomOut: () => root.value?.zoomOut(),
 })
 </script>
 
@@ -95,6 +101,8 @@ defineExpose({
     @resize="emit('resize', $event)"
     @progress="emit('progress', $event)"
     @update:rows="emit('update:rows', $event)"
+    @update:zoom="emit('update:zoom', $event)"
+    @zoom-change="emit('zoom-change', $event)"
     @group-toggle="emit('group-toggle', $event)"
     @dependency-create="emit('dependency-create', $event)"
     @dependency-remove="emit('dependency-remove', $event)"

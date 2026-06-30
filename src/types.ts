@@ -9,6 +9,21 @@ import type { DependencyPathBuilder } from './dependencyPaths'
 export type GanttUnit = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'hour' | 'minute'
 
 /**
+ * A named zoom level (view mode): a preset bundle of `tiers` + `columnWidth`
+ * density. The `zoom` prop / `GanttZoom` control switch between these.
+ */
+export interface GanttZoomLevel {
+  /** Stable identifier; also the `v-model:zoom` value (e.g. `'week'`). */
+  id: string
+  /** Display label for the control; defaults to `id`. */
+  label?: string
+  /** Timeline tiers for this level, coarse→fine (the finest drives density). */
+  tiers: GanttUnit[]
+  /** Pixel width of one base-unit (finest tier) cell at this level. */
+  columnWidth: number
+}
+
+/**
  * How timeline column labels are formatted. Either:
  * - a date-fns format string — applied to the **base unit** only (other tiers keep
  *   their defaults);
@@ -253,6 +268,18 @@ export interface GanttRootProps {
    * of format strings, or a `(date, tier) => string` function. See `GanttLabelFormat`.
    */
   labelFormat?: GanttLabelFormat
+  /**
+   * Named zoom levels (view-mode presets) the `zoom` prop / `GanttZoom` control
+   * switch between; each bundles `tiers` + `columnWidth`. Defaults to
+   * `DEFAULT_ZOOM_LEVELS` (year → hour).
+   */
+  zoomLevels?: GanttZoomLevel[]
+  /**
+   * Active zoom level id; supports `v-model:zoom`. When set, the matching level's
+   * `tiers`/`columnWidth` override those props. Omit for the classic
+   * `tiers`/`columnWidth`/`unit` behavior (no level active).
+   */
+  zoom?: string
 }
 
 /** Resolved configuration shared with every child component. */
@@ -369,6 +396,14 @@ export interface GanttGroupToggleEvent {
   id: string
   /** The new collapsed state. */
   collapsed: boolean
+}
+
+/** Payload emitted when the active zoom level changes. */
+export interface GanttZoomEvent {
+  /** Id of the now-active zoom level. */
+  id: string
+  /** The full level definition that was activated. */
+  level: GanttZoomLevel
 }
 
 /** Payload for pointer interactions on a task bar or milestone marker. */
@@ -586,4 +621,16 @@ export interface GanttContext {
   scrollToTask: (id: string, options?: GanttScrollOptions) => void
   /** Scroll to the current time (`today`). */
   scrollToToday: (options?: GanttScrollOptions) => void
+  /** Available zoom levels (the `zoomLevels` prop or `DEFAULT_ZOOM_LEVELS`). */
+  zoomLevels: ComputedRef<GanttZoomLevel[]>
+  /** Id of the active zoom level, or `undefined` when no level is active. */
+  activeZoom: ComputedRef<string | undefined>
+  /** Whether a finer (`zoomIn`) / coarser (`zoomOut`) level is available. */
+  canZoomIn: ComputedRef<boolean>
+  canZoomOut: ComputedRef<boolean>
+  /** Activate a zoom level by id (re-emitted as `update:zoom` + `zoom-change`). */
+  setZoom: (id: string) => void
+  /** Step to the next finer / coarser zoom level (clamped at the ends). */
+  zoomIn: () => void
+  zoomOut: () => void
 }

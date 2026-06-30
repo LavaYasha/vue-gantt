@@ -17,6 +17,7 @@ export { default as GanttGrid } from './components/GanttGrid.vue'
 export { default as GanttDependencies } from './components/GanttDependencies.vue'
 export { default as GanttConflicts } from './components/GanttConflicts.vue'
 export { default as GanttToday } from './components/GanttToday.vue'
+export { default as GanttZoom } from './components/GanttZoom.vue'
 
 // Composables
 export { useGanttContext } from './composables/useGanttContext'
@@ -42,6 +43,9 @@ export {
 } from './context'
 export { assignLanes, layoutRows, layoutGroups, conflictSegments } from './layout'
 export type { GroupMeta, GroupedLayout, LayoutGroupsOptions } from './layout'
+
+// Zoom / view-mode presets — pass your own to the `zoomLevels` prop
+export { DEFAULT_ZOOM_LEVELS } from './zoom'
 
 // Dependency connector path builders — pass one (or your own) to `dependencyShape`
 export { elbowPath, straightPath, bezierPath, STUB } from './dependencyPaths'
@@ -109,6 +113,8 @@ export type {
   GanttTaskEvent,
   GanttUnit,
   GanttViewport,
+  GanttZoomEvent,
+  GanttZoomLevel,
   ResolvedGroup,
   ResolvedRow,
   ResolvedTask,
