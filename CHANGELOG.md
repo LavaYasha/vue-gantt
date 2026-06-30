@@ -46,6 +46,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   name plus the date for a milestone; it is hidden while dragging. Themeable via
   the new `--gantt-tooltip-bg` / `-color` / `-radius` / `-font-size` / `-shadow`
   CSS variables (which inherit the drag-label look by default).
+- **Zoom / view-mode** switching. Named zoom levels (presets bundling `tiers` +
+  `columnWidth`) selected by the `zoom` prop with `v-model:zoom`; `zoomLevels`
+  overrides the built-in `DEFAULT_ZOOM_LEVELS` (year → hour, exported). State is
+  uncontrolled (seeded from `zoom`) — `Gantt`/`GanttRoot` expose imperative
+  `setZoom(id)` / `zoomIn()` / `zoomOut()` (and `GanttRoot` `activeZoom`), and emit
+  `zoom-change` (`GanttZoomEvent`). A new headless `GanttZoom` control (− / level
+  select / +) drives it from inside the chart (e.g. the `corner` slot); its default
+  slot exposes `{ levels, active, setZoom, zoomIn, zoomOut, canZoomIn, canZoomOut }`
+  for a custom UI. Themeable via `--gantt-zoom-*` variables. The `GanttZoomLevel`
+  and `GanttZoomEvent` types are exported.
 
 ### Fixed
 

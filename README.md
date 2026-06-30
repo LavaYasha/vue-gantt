@@ -220,6 +220,7 @@ every [chart event](#events); the rest are the building blocks.
 | `<GanttDependencies>` | —                                                | `dependency-click`                               |
 | `<GanttConflicts>`    | —                                                | —                                                |
 | `<GanttToday>`        | `interval?: number` (ms, default `1000`)         | —                                                |
+| `<GanttZoom>`         | — (reads context; default slot for custom UI)    | — (calls `setZoom`/`zoomIn`/`zoomOut` on root)   |
 
 The leaf components emit short names for **declarative** use (`<GanttTask @click>`).
 The same interactions are re-emitted, namespaced, on `<GanttRoot>` / `<Gantt>`
@@ -242,6 +243,8 @@ parent collapses to the content height and simply grows to fit (as before).
 | `unit`                  | `GanttUnit`                                       | `'day'`         | Base granularity when `tiers` is omitted.                                                                                                                                                                                                                     |
 | `tiers`                 | `GanttUnit[]`                                     | `[unit]`        | Header rows, coarse → fine, e.g. `['month','week','day']`.                                                                                                                                                                                                    |
 | `columnWidth`           | `number`                                          | `40`            | Width of one base-unit cell, px.                                                                                                                                                                                                                              |
+| `zoomLevels`            | `GanttZoomLevel[]`                                | `DEFAULT_ZOOM_LEVELS` | Named view-mode presets the `zoom` prop / `GanttZoom` switch between; each bundles `tiers` + `columnWidth` (year → hour).                                                                                                                                |
+| `zoom`                  | `string`                                          | —               | Active zoom level id; supports `v-model:zoom`. When set, the matching level's `tiers`/`columnWidth` override those props. Omit for the classic `tiers`/`columnWidth`/`unit` behavior.                                                                          |
 | `rowHeight`             | `number`                                          | `36`            | Row height, px.                                                                                                                                                                                                                                               |
 | `headerRowHeight`       | `number`                                          | `28`            | Height of one timeline tier row, px.                                                                                                                                                                                                                          |
 | `groupHeaderHeight`     | `number`                                          | `36`            | Group header band height, px.                                                                                                                                                                                                                                 |
@@ -298,6 +301,8 @@ your data (the [utilities](#utilities) make this one-liners).
 | `resize`                       | `GanttResizeEvent`                           | a bar edge is dragged.                                 |
 | `progress`                     | `GanttProgressEvent`                         | the progress handle is dragged.                        |
 | `update:rows`                  | `GanttRowData[]`                             | a task/dependency change is applied (`v-model:rows`).  |
+| `update:zoom`                  | `string`                                     | the active zoom level changes (`v-model:zoom`).        |
+| `zoom-change`                  | `GanttZoomEvent`                             | the active zoom level changes (carries the level).     |
 | `group-toggle`                 | `GanttGroupToggleEvent`                      | a group is collapsed/expanded.                         |
 | `dependency-create`            | `GanttDependencyChange`                      | a link is dragged from one task to another.            |
 | `dependency-update`            | `GanttDependencyUpdate`                      | an arrow endpoint is re-routed (carries `previous`).   |
@@ -348,6 +353,16 @@ interface GanttDragLabelInfo {
   end: Date
   progress: number
 }
+interface GanttZoomLevel {
+  id: string // stable id; also the v-model:zoom value
+  label?: string // control label (defaults to id)
+  tiers: GanttUnit[] // timeline tiers, coarse → fine
+  columnWidth: number // base-unit cell width, px
+}
+interface GanttZoomEvent {
+  id: string
+  level: GanttZoomLevel
+}
 ```
 
 ### Two-way binding (`v-model:rows`)
@@ -377,14 +392,21 @@ yourself — combining both double-applies each change.
 
 ### Imperative methods
 
-`<Gantt>` / `<GanttRoot>` expose scroll helpers via a template ref:
+`<Gantt>` / `<GanttRoot>` expose scroll and zoom helpers via a template ref:
 
 ```ts
 const chart = useTemplateRef('chart')
 chart.value?.scrollToToday()
 chart.value?.scrollToTask('spec', { align: 'center' })
 chart.value?.scrollToDate('2026-06-10')
+
+chart.value?.setZoom('week') // activate a level by id
+chart.value?.zoomIn() // step to the next finer level
+chart.value?.zoomOut() // step to the next coarser level
 ```
+
+`<GanttRoot>` additionally exposes `activeZoom` (the active level id, or
+`undefined`).
 
 ### Utilities
 
@@ -422,6 +444,43 @@ with a rolled-up summary bar. Provide group labels via the `groups` prop (or the
 declarative `<GanttGroup>`).
 
 ![Row grouping](https://raw.githubusercontent.com/LavaYasha/vue-gantt/main/docs/grouping.png)
+
+## Zoom / view-mode
+
+A zoom level is a **view-mode preset** — a named bundle of `tiers` + `columnWidth`.
+Pass the active level's id to `zoom` (with `v-model:zoom`) and it overrides the
+`tiers`/`columnWidth` props; omit it for the classic behavior. `zoomLevels`
+defines the available presets and defaults to `DEFAULT_ZOOM_LEVELS` (year → hour),
+which is exported so you can extend or reorder it.
+
+```vue
+<script setup lang="ts">
+import { Gantt, DEFAULT_ZOOM_LEVELS } from '@dizzy_yakov/vue-gantt'
+import { ref } from 'vue'
+
+const zoom = ref('week')
+</script>
+
+<template>
+  <Gantt :rows="rows" v-model:zoom="zoom" :zoom-levels="DEFAULT_ZOOM_LEVELS" />
+</template>
+```
+
+`<GanttZoom>` is a headless control (− / level-select / +) that reads the shared
+context, so drop it inside `<GanttRoot>` — e.g. in the `corner` slot of `<Gantt>`:
+
+```vue
+<Gantt :rows="rows" v-model:zoom="zoom">
+  <template #corner>
+    <GanttZoom />
+  </template>
+</Gantt>
+```
+
+Its default slot exposes `{ levels, active, setZoom, zoomIn, zoomOut, canZoomIn, canZoomOut }`
+for a fully custom UI. You can also drive zoom imperatively
+([`setZoom`/`zoomIn`/`zoomOut`](#imperative-methods) via a ref) or react to the
+`zoom-change` event ([`GanttZoomEvent`](#events)).
 
 ## Theming
 
@@ -579,6 +638,21 @@ default slot (`<slot :links>`).
 | ---------------------- | ------------------ | -------------------- |
 | `--gantt-today-color`  | `#ef4444`          | "Today" line colour. |
 | `--gantt-today-border` | `2px solid …color` | "Today" line border. |
+
+**Zoom control** (`GanttZoom`)
+
+| Variable                    | Default               | Purpose                            |
+| --------------------------- | --------------------- | ---------------------------------- |
+| `--gantt-zoom-gap`          | `4px`                 | Gap between the control's buttons. |
+| `--gantt-zoom-padding`      | `4px`                 | Padding around the control.        |
+| `--gantt-zoom-btn-size`     | `24px`                | Width/height of the −/+ buttons.   |
+| `--gantt-zoom-radius`       | `4px`                 | Button/select corner radius.       |
+| `--gantt-zoom-border`       | `1px solid …grid`     | Button/select border.              |
+| `--gantt-zoom-color`        | `inherit`             | Button/select text color.          |
+| `--gantt-zoom-btn-bg`       | `transparent`         | Button background.                 |
+| `--gantt-zoom-btn-hover-bg` | `rgb(0 0 0 / 6%)`     | Button hover background.           |
+| `--gantt-zoom-select-bg`    | `transparent`         | Level select background.           |
+| `--gantt-zoom-select-padding` | `2px 6px`           | Level select padding.              |
 
 > A few internal vars (`--gantt-content-width` / `-height`, `--gantt-header-height`,
 > `--gantt-label-sticky-left`) are computed by `GanttRoot` — don't set them.

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
 import Gantt from '../components/Gantt.vue'
+import GanttZoom from '../components/GanttZoom.vue'
 import type { GanttMoveEvent, GanttRow } from '../types'
 import { sampleRows } from './_shared'
 
@@ -63,6 +64,7 @@ const meta: Meta<typeof Gantt> = {
     },
     today: { control: 'text' },
     labelFormat: { control: 'text' },
+    'onZoom-change': { action: 'zoom-change', table: { category: 'events' } },
     onMove: { action: 'move', table: { category: 'events' } },
     onResize: { action: 'resize', table: { category: 'events' } },
     onProgress: { action: 'progress', table: { category: 'events' } },
@@ -354,6 +356,30 @@ export const CustomTooltipSlot: Story = {
         <template #tooltip="{ task }">
           <strong>{{ task.name }}</strong>
           <span style="opacity:.8">{{ task.progress }}% complete</span>
+        </template>
+      </Gantt>`,
+  }),
+}
+
+/**
+ * A zoom level is a view-mode preset (a named `tiers` + `columnWidth` bundle).
+ * Drop the headless `<GanttZoom>` control into the `corner` slot and bind the
+ * active level id with `v-model:zoom`: the − / select / + control switches
+ * presets (`DEFAULT_ZOOM_LEVELS` by default), overriding the `tiers`/`columnWidth`
+ * props. `zoom-change` fires on every switch.
+ */
+export const Zoom: Story = {
+  args: { height: 300 },
+  render: args => ({
+    components: { Gantt, GanttZoom },
+    setup() {
+      const zoom = ref('week')
+      return { args, zoom }
+    },
+    template: `
+      <Gantt v-bind="args" v-model:zoom="zoom">
+        <template #corner>
+          <GanttZoom />
         </template>
       </Gantt>`,
   }),

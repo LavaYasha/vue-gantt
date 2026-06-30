@@ -63,6 +63,18 @@
   --gantt-drag-label-radius: 4px;
   --gantt-drag-label-font-size: 0.72em;
 
+  /* Zoom control (GanttZoom) */
+  --gantt-zoom-gap: 4px;
+  --gantt-zoom-padding: 4px;
+  --gantt-zoom-btn-size: 24px;
+  --gantt-zoom-radius: 4px;
+  --gantt-zoom-border: 1px solid var(--gantt-grid-color, #e5e7eb);
+  --gantt-zoom-color: inherit;
+  --gantt-zoom-btn-bg: transparent;
+  --gantt-zoom-btn-hover-bg: rgb(0 0 0 / 6%);
+  --gantt-zoom-select-bg: transparent;
+  --gantt-zoom-select-padding: 2px 6px;
+
   /* Milestones */
   --gantt-milestone-size: 14px;
   --gantt-milestone-bg: #f59e0b;
