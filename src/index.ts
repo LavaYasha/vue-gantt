@@ -16,6 +16,7 @@ export { default as GanttMilestone } from './components/GanttMilestone.vue'
 export { default as GanttGrid } from './components/GanttGrid.vue'
 export { default as GanttDependencies } from './components/GanttDependencies.vue'
 export { default as GanttConflicts } from './components/GanttConflicts.vue'
+export { default as GanttDeadlines } from './components/GanttDeadlines.vue'
 export { default as GanttToday } from './components/GanttToday.vue'
 export { default as GanttZoom } from './components/GanttZoom.vue'
 
@@ -75,6 +76,8 @@ export {
   topologicalOrder,
   criticalPath,
   autoSchedule,
+  isOverdue,
+  violatesConstraint,
   validateRows,
 } from './utils'
 
@@ -86,6 +89,8 @@ export type {
   GanttColumnEvent,
   GanttConfig,
   GanttConflict,
+  GanttConstraint,
+  GanttConstraintType,
   GanttContext,
   GanttDependencyChange,
   GanttDependencyEvent,
