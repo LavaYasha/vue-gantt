@@ -90,6 +90,10 @@ export interface GanttTask {
   deadline?: Date | string | number
   /** Scheduling constraint (honored by `autoSchedule` for lower bounds). */
   constraint?: GanttConstraint
+  /** Planned start (baseline). Drawn as a shadow bar under the actual bar. */
+  baselineStart?: Date | string | number
+  /** Planned end (baseline). Drawn together with `baselineStart`. */
+  baselineEnd?: Date | string | number
   /** Arbitrary extra data forwarded to slots untouched. */
   meta?: Record<string, unknown>
 }
@@ -143,6 +147,10 @@ export interface ResolvedTask {
   deadline?: Date
   /** Scheduling constraint with its date coerced to a `Date` (absent when not set). */
   constraint?: { type: GanttConstraintType; date: Date }
+  /** Planned start, coerced to a `Date` (absent when no baseline). */
+  baselineStart?: Date
+  /** Planned end, coerced to a `Date` (absent when no baseline). */
+  baselineEnd?: Date
   meta: Record<string, unknown>
   /** Id of the row this task belongs to. */
   rowId: string

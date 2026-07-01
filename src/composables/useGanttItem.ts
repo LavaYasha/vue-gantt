@@ -18,6 +18,8 @@ export interface GanttItemProps {
   dependencies?: string[]
   deadline?: Date | string | number
   constraint?: GanttConstraint
+  baselineStart?: Date | string | number
+  baselineEnd?: Date | string | number
   meta?: Record<string, unknown>
   /** Explicit row id (declarative mode, overrides the enclosing `GanttRow`). */
   rowId?: string
@@ -51,6 +53,8 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
     dependencies: props.dependencies,
     deadline: props.deadline,
     constraint: props.constraint,
+    baselineStart: props.baselineStart,
+    baselineEnd: props.baselineEnd,
     meta: props.meta,
     ...(props.task as GanttTask | undefined),
     ...overrides,
