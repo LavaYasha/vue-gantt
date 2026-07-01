@@ -68,6 +68,7 @@ defineSlots<{
   bars?: (props: { tasks: unknown }) => unknown
   grid?: (props: { columns: unknown; rows: unknown }) => unknown
   conflicts?: (props: { conflicts: unknown }) => unknown
+  slack?: (props: { slack: unknown }) => unknown
   deadlines?: (props: { tasks: unknown }) => unknown
   dependencies?: (props: { tasks: unknown }) => unknown
   today?: (props: { today: unknown; dateToX: unknown }) => unknown
@@ -143,6 +144,9 @@ defineExpose({
       </template>
       <template v-if="$slots.conflicts" #conflicts="slotProps">
         <slot name="conflicts" v-bind="slotProps" />
+      </template>
+      <template v-if="$slots.slack" #slack="slotProps">
+        <slot name="slack" v-bind="slotProps" />
       </template>
       <template v-if="$slots.deadlines" #deadlines="slotProps">
         <slot name="deadlines" v-bind="slotProps" />

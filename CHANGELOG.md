@@ -40,6 +40,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `violatesConstraint`, the `GanttDeadlines` component and `deadlines` slot, the
   `GanttConstraint` / `GanttConstraintType` types, and `--gantt-deadline-*` /
   `--gantt-overdue-*` / `--gantt-constraint-*` theme tokens.
+- **Interactive auto-scheduling** — opt-in `autoSchedule` prop on `Gantt`/`GanttRoot`.
+  When on, a move/resize or a dependency create/update pushes the changed task's
+  finish-to-start successors forward (preserving durations, MS-Project style) by
+  applying the existing `autoSchedule` utility to the emitted `update:rows`. Effective
+  only with `v-model:rows` / prop-driven `rows`; the live drag ghost is unaffected
+  (successors snap into place on release).
+- **Critical path & slack** visualization. Two opt-in props on `Gantt`/`GanttRoot`:
+  `criticalPath` highlights the critical-path tasks (a `data-critical` attribute on
+  their bars/milestone markers, themed via `--gantt-critical-color` /
+  `--gantt-critical-outline`), reusing the existing `criticalPath(rows)` utility;
+  `slack` renders each task's free float as a translucent bar from its end to its
+  nearest successor's start, via the new headless `GanttSlack` overlay (default
+  slot `{ taskId, slack }`, `slack` section slot, `--gantt-slack-*` tokens). The
+  new pure `slack(rows): Map<string, number>` utility (free float in days) is
+  exported alongside `GanttSlack`.
 - `sortRows` / `filterRows` data utilities — pure, immutable helpers to reorder or
   filter `GanttRow[]` by a comparator/predicate (the chart stays controlled: pass
   the result back as `rows`). Build comparators from row data, e.g. `tasksExtent`

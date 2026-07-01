@@ -268,6 +268,10 @@ export interface GanttRootProps {
   progressDraggable?: boolean
   /** Show a hover tooltip on bars/milestones (override its content via the `tooltip` slot). */
   tooltip?: boolean
+  /** Highlight the tasks on the critical path (`data-critical` on their bars). */
+  criticalPath?: boolean
+  /** Show each task's free-float slack as a translucent bar after its end. */
+  slack?: boolean
   /** Allow creating/editing dependencies by dragging between tasks. */
   linkable?: boolean
   /**
@@ -284,6 +288,13 @@ export interface GanttRootProps {
   arrowHead?: ArrowHeadBuilder
   /** Snap dragged dates to the base-unit grid. Off by default (full precision). */
   snapToGrid?: boolean
+  /**
+   * On a move/resize or a dependency create/update, push finish-to-start
+   * successors forward so none starts before a predecessor ends (MS-Project
+   * style), preserving each task's duration. Effective only with `v-model:rows`
+   * (or prop-driven `rows`) — the cascade is applied to the emitted `update:rows`.
+   */
+  autoSchedule?: boolean
   /** date-fns format for the live date label shown while dragging. */
   dragLabelFormat?: string
   /** Override the drag tooltip text (move / resize / progress). */
@@ -336,6 +347,10 @@ export interface GanttConfig {
   progressDraggable: boolean
   /** Whether a hover tooltip is shown on bars/milestones. */
   tooltip: boolean
+  /** Whether critical-path tasks are highlighted. */
+  criticalPath: boolean
+  /** Whether free-float slack bars are shown. */
+  slack: boolean
   /** Whether dependencies can be created/edited by dragging. */
   linkable: boolean
   /** Connector path builder `(tail, head) => string` (resolved, never undefined). */
@@ -344,6 +359,8 @@ export interface GanttConfig {
   arrowHead: ArrowHeadBuilder
   /** Whether dragged dates snap to the base-unit grid. */
   snapToGrid: boolean
+  /** Whether successors are auto-rescheduled on a move/resize/link change. */
+  autoSchedule: boolean
   /** date-fns format for the live drag date label. */
   dragLabelFormat: string
   /** Optional override for the drag tooltip text (move / resize / progress). */
@@ -600,6 +617,10 @@ export interface GanttContext {
   taskBand: (task: ResolvedTask) => GanttBand
   /** Overlap spans per row (non-empty only in `conflict` mode). */
   conflicts: ComputedRef<GanttConflict[]>
+  /** Ids of the critical-path tasks (empty unless `criticalPath` is on). */
+  criticalTasks: ComputedRef<Set<string>>
+  /** Free-float slack (days) by task id (empty unless `slack` is on). */
+  slack: ComputedRef<Map<string, number>>
   /** Register a declaratively-declared row (used by `GanttRow`). */
   registerRow: (row: GanttRow) => void
   /** Remove a previously registered row. */
