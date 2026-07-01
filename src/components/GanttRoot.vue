@@ -27,7 +27,16 @@ import { triangleArrow } from '../arrowHeads'
 import { GANTT_CONTEXT, GANTT_DEFAULTS, normalizeRow, toDate } from '../context'
 import { elbowPath } from '../dependencyPaths'
 import { conflictSegments, layoutGroups, type GroupMeta } from '../layout'
-import { addDependency, applyMove, removeDependency, updateTask } from '../utils'
+import {
+  addDependency,
+  applyMove,
+  autoSchedule,
+  criticalPath,
+  removeDependency,
+  slack,
+  updateTask,
+} from '../utils'
+import { DEFAULT_ZOOM_LEVELS } from '../zoom'
 import type {
   GanttBand,
   GanttCellEvent,
@@ -51,38 +60,45 @@ import type {
   GanttTaskEvent,
   GanttUnit,
   GanttViewport,
+  GanttZoomEvent,
+  GanttZoomLevel,
   ResolvedGroup,
   ResolvedRow,
   ResolvedTask,
 } from '../types'
 
 const props = withDefaults(defineProps<GanttRootProps>(), {
-    rows: undefined,
-    unit: GANTT_DEFAULTS.unit,
-    tiers: undefined,
-    columnWidth: GANTT_DEFAULTS.columnWidth,
-    groups: undefined,
-    rowHeight: GANTT_DEFAULTS.rowHeight,
-    headerRowHeight: GANTT_DEFAULTS.headerRowHeight,
-    groupHeaderHeight: GANTT_DEFAULTS.groupHeaderHeight,
-    sidebarWidth: GANTT_DEFAULTS.sidebarWidth,
-    overlap: GANTT_DEFAULTS.overlap,
-    draggable: GANTT_DEFAULTS.draggable,
-    rowMovable: GANTT_DEFAULTS.rowMovable,
-    resizable: GANTT_DEFAULTS.resizable,
-    progressDraggable: GANTT_DEFAULTS.progressDraggable,
-    linkable: GANTT_DEFAULTS.linkable,
-    dependencyShape: elbowPath,
-    arrowHead: triangleArrow,
-    snapToGrid: GANTT_DEFAULTS.snapToGrid,
-    dragLabelFormat: GANTT_DEFAULTS.dragLabelFormat,
-    dragLabel: undefined,
-    startDate: undefined,
-    endDate: undefined,
-    today: undefined,
-    labelFormat: undefined,
-  },
-)
+  rows: undefined,
+  unit: GANTT_DEFAULTS.unit,
+  tiers: undefined,
+  columnWidth: GANTT_DEFAULTS.columnWidth,
+  groups: undefined,
+  rowHeight: GANTT_DEFAULTS.rowHeight,
+  headerRowHeight: GANTT_DEFAULTS.headerRowHeight,
+  groupHeaderHeight: GANTT_DEFAULTS.groupHeaderHeight,
+  sidebarWidth: GANTT_DEFAULTS.sidebarWidth,
+  overlap: GANTT_DEFAULTS.overlap,
+  draggable: GANTT_DEFAULTS.draggable,
+  rowMovable: GANTT_DEFAULTS.rowMovable,
+  resizable: GANTT_DEFAULTS.resizable,
+  progressDraggable: GANTT_DEFAULTS.progressDraggable,
+  tooltip: GANTT_DEFAULTS.tooltip,
+  criticalPath: GANTT_DEFAULTS.criticalPath,
+  slack: GANTT_DEFAULTS.slack,
+  linkable: GANTT_DEFAULTS.linkable,
+  dependencyShape: elbowPath,
+  arrowHead: triangleArrow,
+  snapToGrid: GANTT_DEFAULTS.snapToGrid,
+  autoSchedule: GANTT_DEFAULTS.autoSchedule,
+  dragLabelFormat: GANTT_DEFAULTS.dragLabelFormat,
+  dragLabel: undefined,
+  startDate: undefined,
+  endDate: undefined,
+  today: undefined,
+  labelFormat: undefined,
+  zoomLevels: () => DEFAULT_ZOOM_LEVELS,
+  zoom: undefined,
+})
 
 const emit = defineEmits<{
   move: [event: GanttMoveEvent]
@@ -90,6 +106,9 @@ const emit = defineEmits<{
   progress: [event: GanttProgressEvent]
   /** `v-model:rows` — emitted with the rows after applying a task change. */
   'update:rows': [rows: GanttRow[]]
+  /** `v-model:zoom` — emitted with the active zoom level id when it changes. */
+  'update:zoom': [id: string]
+  'zoom-change': [event: GanttZoomEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
   'dependency-create': [event: GanttDependencyChange]
   'dependency-remove': [event: GanttDependencyChange]
@@ -116,6 +135,13 @@ function emitModelUpdate(apply: (rows: GanttRow[]) => GanttRow[]): void {
   if (props.rows) emit('update:rows', apply(props.rows))
 }
 
+// Opt-in auto-scheduling: after an interactive edit cascades into `v-model:rows`,
+// push `changedId`'s finish-to-start successors forward (preserving durations).
+// A no-op (returns the same rows) when off or when nothing needs shifting.
+function maybeAutoSchedule(rows: GanttRow[], changedId: string): GanttRow[] {
+  return props.autoSchedule ? autoSchedule(rows, changedId) : rows
+}
+
 // Bubble child interactions up as the matching chart event. Components call this
 // via the context so prop-driven `<Gantt>` consumers can listen at the root.
 function dispatch<K extends keyof GanttEventMap>(name: K, payload: GanttEventMap[K]): void {
@@ -123,14 +149,17 @@ function dispatch<K extends keyof GanttEventMap>(name: K, payload: GanttEventMap
   // Mirror dependency edits into `v-model:rows`.
   if (name === 'dependency-create') {
     const p = payload as GanttDependencyChange
-    emitModelUpdate((rows) => addDependency(rows, p.from, p.to))
+    emitModelUpdate(rows => maybeAutoSchedule(addDependency(rows, p.from, p.to), p.from))
   } else if (name === 'dependency-remove') {
     const p = payload as GanttDependencyChange
-    emitModelUpdate((rows) => removeDependency(rows, p.from, p.to))
+    emitModelUpdate(rows => removeDependency(rows, p.from, p.to))
   } else if (name === 'dependency-update') {
     const p = payload as GanttDependencyUpdate
-    emitModelUpdate((rows) =>
-      addDependency(removeDependency(rows, p.previous.from, p.previous.to), p.from, p.to),
+    emitModelUpdate(rows =>
+      maybeAutoSchedule(
+        addDependency(removeDependency(rows, p.previous.from, p.previous.to), p.from, p.to),
+        p.from,
+      ),
     )
   }
 }
@@ -157,11 +186,69 @@ const TIER_RANK: Record<GanttUnit, number> = {
   minute: 6,
 }
 
-// Displayed time-group rows, deduped and ordered coarse → fine.
+// --- Zoom / view-mode -----------------------------------------------------
+// A zoom level is a preset bundle of `tiers` + `columnWidth`. State is
+// uncontrolled-with-v-model: an internal ref seeded from the `zoom` prop and
+// kept in sync with it, so `setZoom`/`zoomIn`/`zoomOut` work standalone while
+// `v-model:zoom` (or a static `:zoom`) still drives it. When no level is active
+// the chart falls back to the raw `tiers`/`columnWidth`/`unit` props (unchanged).
+const zoomLevels = computed<GanttZoomLevel[]>(() => props.zoomLevels)
+const zoomState = ref<string | undefined>(props.zoom)
+watch(
+  () => props.zoom,
+  v => {
+    if (v != null) zoomState.value = v
+  },
+)
+const activeZoom = computed<string | undefined>(() => zoomState.value)
+const activeIndex = computed<number>(() =>
+  zoomLevels.value.findIndex(l => l.id === activeZoom.value),
+)
+const activeLevel = computed<GanttZoomLevel | undefined>(() => zoomLevels.value[activeIndex.value])
+
+// The index `zoomIn`/`zoomOut` step from: the active level, or — when none is
+// active — the level whose base unit matches the current axis, else the coarsest.
+// `canZoomIn`/`canZoomOut` read from the same anchor, so a button's disabled
+// state always matches whether a click would move.
+const effectiveIndex = computed<number>(() => {
+  if (activeIndex.value >= 0) return activeIndex.value
+  const byUnit = zoomLevels.value.findIndex(l => l.tiers[l.tiers.length - 1] === baseUnit.value)
+  return byUnit < 0 ? 0 : byUnit
+})
+const canZoomIn = computed(() => effectiveIndex.value < zoomLevels.value.length - 1)
+const canZoomOut = computed(() => effectiveIndex.value > 0)
+
+function setZoom(id: string): void {
+  // Idempotent: re-selecting the active level (e.g. a clamped edge step) is a
+  // no-op and emits nothing.
+  if (id === zoomState.value) return
+  const level = zoomLevels.value.find(l => l.id === id)
+  if (!level) return
+  zoomState.value = id
+  emit('update:zoom', id)
+  emit('zoom-change', { id, level })
+}
+
+// Step `delta` levels (coarse→fine ordering: +1 = finer), clamped to the range.
+function step(delta: number): void {
+  const levels = zoomLevels.value
+  const next = Math.min(levels.length - 1, Math.max(0, effectiveIndex.value + delta))
+  const target = levels[next]
+  if (target) setZoom(target.id)
+}
+const zoomIn = (): void => step(1)
+const zoomOut = (): void => step(-1)
+
+// Displayed time-group rows, deduped and ordered coarse → fine. The active zoom
+// level's tiers win; otherwise the `tiers` prop (or `[unit]`).
 const tiers = computed<GanttUnit[]>(() => {
-  const requested = props.tiers?.length ? props.tiers : [props.unit]
+  const requested =
+    activeLevel.value?.tiers ?? (props.tiers?.length ? props.tiers : [props.unit])
   return [...new Set(requested)].sort((a, b) => TIER_RANK[a] - TIER_RANK[b])
 })
+
+// Pixel density: the active zoom level's columnWidth wins over the prop.
+const columnWidth = computed<number>(() => activeLevel.value?.columnWidth ?? props.columnWidth)
 
 // The finest displayed tier drives pixel density; the coarsest snaps the bounds.
 const baseUnit = computed<GanttUnit>(() => tiers.value[tiers.value.length - 1] ?? props.unit)
@@ -203,7 +290,7 @@ function isCollapsed(group: GanttGroup): boolean {
 const groupMeta = computed<Map<string, GroupMeta>>(
   () =>
     new Map(
-      sourceGroups.value.map((group) => [
+      sourceGroups.value.map(group => [
         group.id,
         {
           name: group.name ?? group.id,
@@ -215,7 +302,7 @@ const groupMeta = computed<Map<string, GroupMeta>>(
 )
 
 function toggleGroup(id: string): void {
-  const group = sourceGroups.value.find((g) => g.id === id)
+  const group = sourceGroups.value.find(g => g.id === id)
   const current = group ? isCollapsed(group) : (collapseOverrides.get(id) ?? false)
   collapseOverrides.set(id, !current)
   emit('group-toggle', { id, collapsed: !current })
@@ -238,7 +325,7 @@ const rows = computed<ResolvedRow[]>(() => layout.value.rows)
 const groups = computed<ResolvedGroup[]>(() => layout.value.groups)
 
 // All tasks flattened across rows (each carries its row's order + lane).
-const tasks = computed<ResolvedTask[]>(() => rows.value.flatMap((row) => row.tasks))
+const tasks = computed<ResolvedTask[]>(() => rows.value.flatMap(row => row.tasks))
 
 const taskOrder = computed(() => {
   const map = new Map<string, number>()
@@ -248,21 +335,21 @@ const taskOrder = computed(() => {
 
 const start = computed<Date>(() => {
   if (props.startDate != null) return toDate(props.startDate)
-  const starts = tasks.value.map((t) => t.start)
+  const starts = tasks.value.map(t => t.start)
   const base = starts.length ? minDate(starts) : today.value
   return floorToUnit(base, coarsestUnit.value)
 })
 
 const end = computed<Date>(() => {
   if (props.endDate != null) return toDate(props.endDate)
-  const ends = tasks.value.map((t) => t.end)
+  const ends = tasks.value.map(t => t.end)
   const base = ends.length ? maxDate(ends) : addDays(today.value, 14)
   return ceilToUnit(base, coarsestUnit.value)
 })
 
 const scale = useGanttScale({
   unit: baseUnit,
-  columnWidth: toRef(props, 'columnWidth'),
+  columnWidth,
   start,
   end,
   today,
@@ -272,7 +359,7 @@ const scale = useGanttScale({
 const config = computed<GanttConfig>(() => ({
   unit: baseUnit.value,
   tiers: tiers.value,
-  columnWidth: props.columnWidth,
+  columnWidth: columnWidth.value,
   rowHeight: props.rowHeight,
   headerRowHeight: props.headerRowHeight,
   groupHeaderHeight: props.groupHeaderHeight,
@@ -282,10 +369,14 @@ const config = computed<GanttConfig>(() => ({
   rowMovable: props.rowMovable,
   resizable: props.resizable,
   progressDraggable: props.progressDraggable,
+  tooltip: props.tooltip,
+  criticalPath: props.criticalPath,
+  slack: props.slack,
   linkable: props.linkable,
   dependencyShape: props.dependencyShape,
   arrowHead: props.arrowHead,
   snapToGrid: props.snapToGrid,
+  autoSchedule: props.autoSchedule,
   dragLabelFormat: props.dragLabelFormat,
   dragLabel: props.dragLabel,
   start: start.value,
@@ -347,6 +438,7 @@ function setScroller(el: HTMLElement | null): void {
   scrollerEl.value = el
 }
 
+
 // Edge auto-scroll during a drag (move/resize/link): scrolls the viewport toward
 // whichever edge the pointer approaches so off-screen destinations are reachable.
 // Clamp to the content extent (not `el.scrollWidth/Height`, which a dragged ghost
@@ -360,7 +452,11 @@ const autoscroll = useGanttAutoscroll(
 )
 onUnmounted(() => autoscroll.update(null))
 
-function applyScroll(left: number | undefined, top: number | undefined, behavior: ScrollBehavior): void {
+function applyScroll(
+  left: number | undefined,
+  top: number | undefined,
+  behavior: ScrollBehavior,
+): void {
   const el = scrollerEl.value
   if (!el) return
   const x = left == null ? undefined : Math.max(0, left)
@@ -381,19 +477,27 @@ function leftForDate(date: Date | string | number, align: 'start' | 'center'): n
   return x
 }
 
-function scrollToDate(date: Date | string | number, options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {}): void {
+function scrollToDate(
+  date: Date | string | number,
+  options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {},
+): void {
   applyScroll(leftForDate(date, options.align ?? 'start'), undefined, options.behavior ?? 'smooth')
 }
 
-function scrollToTask(id: string, options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {}): void {
-  const task = tasks.value.find((t) => t.id === id)
+function scrollToTask(
+  id: string,
+  options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {},
+): void {
+  const task = tasks.value.find(t => t.id === id)
   if (!task) return
   const row = rowByOrder.value[task.order]
   const top = row ? row.top : task.order * props.rowHeight
   applyScroll(leftForDate(task.start, options.align ?? 'start'), top, options.behavior ?? 'smooth')
 }
 
-function scrollToToday(options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {}): void {
+function scrollToToday(
+  options: { behavior?: ScrollBehavior; align?: 'start' | 'center' } = {},
+): void {
   scrollToDate(today.value, options)
 }
 
@@ -427,12 +531,12 @@ function bandInWindow(top: number, height: number): boolean {
 
 // Collapsed groups hide their member rows: drop `hidden` rows from every view.
 const visibleRows = computed<ResolvedRow[]>(() =>
-  rows.value.filter((r) => !r.hidden && rowInWindow(r.order)),
+  rows.value.filter(r => !r.hidden && rowInWindow(r.order)),
 )
 
 const visibleTasks = computed<ResolvedTask[]>(() => {
   const h = horizontalWindow.value
-  return tasks.value.filter((t) => {
+  return tasks.value.filter(t => {
     const row = rowByOrder.value[t.order]
     if (row?.hidden) return false
     if (!rowInWindow(t.order)) return false
@@ -444,7 +548,7 @@ const visibleTasks = computed<ResolvedTask[]>(() => {
 })
 
 const visibleGroups = computed<ResolvedGroup[]>(() =>
-  groups.value.filter((g) => bandInWindow(g.top, g.height)),
+  groups.value.filter(g => bandInWindow(g.top, g.height)),
 )
 
 function visibleColumnsFor(tier: GanttUnit): GanttColumn[] {
@@ -467,6 +571,16 @@ const conflicts = computed<GanttConflict[]>(() => {
   }
   return out
 })
+
+// Critical-path ids + free-float slack (days) per task. Gated by their props so
+// the pure utilities only run when the visualization is on. Both read the source
+// model (the controlled `rows` / declarative registration).
+const criticalTasks = computed<Set<string>>(() =>
+  props.criticalPath ? new Set(criticalPath(sourceRows.value)) : new Set(),
+)
+const slackMap = computed<Map<string, number>>(() =>
+  props.slack ? slack(sourceRows.value) : new Map(),
+)
 
 // Interactive dependency creation / re-routing (emits intents; data is controlled).
 const { linkDraft, beginLink, endLink, refresh: refreshLink } = useGanttLink({
@@ -495,10 +609,12 @@ const context: GanttContext = {
   widthBetween: scale.widthBetween,
   xToDate: scale.xToDate,
   snap: scale.snap,
-  rowIndexOf: (rowId) => rows.value.findIndex((r) => r.id === rowId),
-  rowOf: (taskId) => taskOrder.value.get(taskId) ?? -1,
+  rowIndexOf: rowId => rows.value.findIndex(r => r.id === rowId),
+  rowOf: taskId => taskOrder.value.get(taskId) ?? -1,
   taskBand,
   conflicts,
+  criticalTasks,
+  slack: slackMap,
   registerRow,
   unregisterRow,
   registerGroup,
@@ -506,17 +622,19 @@ const context: GanttContext = {
   toggleGroup,
   registerTask,
   unregisterTask,
-  moveTask: (event) => {
+  moveTask: event => {
     emit('move', event)
-    emitModelUpdate((rows) => applyMove(rows, event))
+    emitModelUpdate(rows => maybeAutoSchedule(applyMove(rows, event), event.id))
   },
-  resizeTask: (event) => {
+  resizeTask: event => {
     emit('resize', event)
-    emitModelUpdate((rows) => updateTask(rows, event.id, { start: event.start, end: event.end }))
+    emitModelUpdate(rows =>
+      maybeAutoSchedule(updateTask(rows, event.id, { start: event.start, end: event.end }), event.id),
+    )
   },
-  progressTask: (event) => {
+  progressTask: event => {
     emit('progress', event)
-    emitModelUpdate((rows) => updateTask(rows, event.id, { progress: event.progress }))
+    emitModelUpdate(rows => updateTask(rows, event.id, { progress: event.progress }))
   },
   autoScroll: autoscroll.update,
   linkDraft,
@@ -527,6 +645,13 @@ const context: GanttContext = {
   scrollToDate,
   scrollToTask,
   scrollToToday,
+  zoomLevels,
+  activeZoom,
+  canZoomIn,
+  canZoomOut,
+  setZoom,
+  zoomIn,
+  zoomOut,
   viewport,
   setViewport,
 }
@@ -534,7 +659,7 @@ const context: GanttContext = {
 provide(GANTT_CONTEXT, context)
 
 const rootStyle = computed(() => ({
-  '--gantt-column-width': `${props.columnWidth}px`,
+  '--gantt-column-width': `${columnWidth.value}px`,
   '--gantt-row-height': `${props.rowHeight}px`,
   '--gantt-group-header-height': `${props.groupHeaderHeight}px`,
   '--gantt-header-row-height': `${props.headerRowHeight}px`,
@@ -582,7 +707,19 @@ function ceilToUnit(date: Date, unit: GanttUnit): Date {
   }
 }
 
-defineExpose({ rows, tasks, columns: scale.columns, config, scrollToDate, scrollToTask, scrollToToday })
+defineExpose({
+  rows,
+  tasks,
+  columns: scale.columns,
+  config,
+  scrollToDate,
+  scrollToTask,
+  scrollToToday,
+  activeZoom,
+  setZoom,
+  zoomIn,
+  zoomOut,
+})
 </script>
 
 <template>

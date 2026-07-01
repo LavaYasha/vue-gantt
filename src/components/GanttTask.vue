@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { format } from 'date-fns'
 import { useGanttItem, type GanttItemProps } from '../composables/useGanttItem'
+import { useHoverTooltip } from '../composables/useHoverTooltip'
+import { isOverdue, violatesConstraint } from '../utils'
 import type { GanttTaskEvent } from '../types'
 
 const props = defineProps<GanttItemProps>()
@@ -24,6 +27,7 @@ const {
   startResize,
   startProgress,
   liveProgress,
+  segmentBars,
   ghost,
   previewLabel,
   overlapping,
@@ -33,8 +37,13 @@ const {
 const resizable = computed(() => ctx.config.value.resizable)
 const progressDraggable = computed(() => ctx.config.value.progressDraggable)
 const linkable = computed(() => ctx.config.value.linkable)
+// Flags: bar finishes past its deadline, or breaches an upper-bound constraint.
+const overdue = computed(() => isOverdue(resolved.value))
+const constraintViolation = computed(() => violatesConstraint(resolved.value))
 // Highlight this bar while a dependency drag hovers it as a drop target.
 const linkTarget = computed(() => ctx.linkDraft.value?.over === resolved.value.id)
+// Whether this task is on the critical path (only when `criticalPath` is on).
+const critical = computed(() => ctx.criticalTasks.value.has(resolved.value.id))
 
 // Start dragging a new finish-to-start dependency from this task's finish edge.
 function onConnectorDown(event: PointerEvent): void {
@@ -86,6 +95,10 @@ const tooltipStyle = computed(() =>
     ? { left: `${ghost.value.left}px`, transform: `translateY(${ghost.value.translateY}px)` }
     : { left: `${left.value}px` },
 )
+
+// Opt-in hover tooltip (enabled by the `tooltip` flag or a `tooltip` slot);
+// `tipStyle` clamps the left-anchored tooltip within the content (no edge clipping).
+const { hovered, show: showHoverTip, tipStyle: hoverTipStyle } = useHoverTooltip(dragging, left, false)
 </script>
 
 <template>
@@ -103,14 +116,33 @@ const tooltipStyle = computed(() =>
       :data-id="resolved.id"
       :data-draggable="draggable || undefined"
       :data-link-target="linkTarget || undefined"
+      :data-critical="critical || undefined"
+      :data-overdue="overdue || undefined"
+      :data-constraint-violation="constraintViolation || undefined"
+      :data-split="segmentBars.length ? '' : undefined"
       :style="barStyle"
       @pointerdown="onPointerDown"
+      @pointerenter="hovered = true"
+      @pointerleave="hovered = false"
       @click="onClick"
       @dblclick="onDblclick"
       @contextmenu="onContextmenu"
     >
       <slot :task="resolved" :progress="liveProgress">
+        <!-- Split task: work segments with paused gaps, progress flowing through them. -->
+        <template v-if="segmentBars.length">
+          <div class="gantt-bar__split-line" />
+          <div
+            v-for="(seg, i) in segmentBars"
+            :key="i"
+            class="gantt-bar__segment"
+            :style="{ left: `${seg.leftPct}%`, width: `${seg.widthPct}%` }"
+          >
+            <div class="gantt-bar__segment-progress" :style="{ width: `${seg.progressPct}%` }" />
+          </div>
+        </template>
         <div
+          v-else
           class="gantt-bar__progress"
           :style="progressStyle"
           :aria-label="`${liveProgress}%`"
@@ -120,8 +152,14 @@ const tooltipStyle = computed(() =>
 
       <!-- Edge handles for resizing (drag a side; sides flip past each other). -->
       <template v-if="resizable">
-        <div class="gantt-bar__resize gantt-bar__resize--start" @pointerdown.stop="startResize($event, 'start')" />
-        <div class="gantt-bar__resize gantt-bar__resize--end" @pointerdown.stop="startResize($event, 'end')" />
+        <div
+          class="gantt-bar__resize gantt-bar__resize--start"
+          @pointerdown.stop="startResize($event, 'start')"
+        />
+        <div
+          class="gantt-bar__resize gantt-bar__resize--end"
+          @pointerdown.stop="startResize($event, 'end')"
+        />
       </template>
 
       <!-- Progress handle: drag to change completion. -->
@@ -150,6 +188,17 @@ const tooltipStyle = computed(() =>
 
     <!-- Live tooltip for any drag (move / resize / progress). -->
     <div v-if="showTooltip" class="gantt-drag-label" :style="tooltipStyle">{{ previewLabel }}</div>
+
+    <!-- Opt-in hover tooltip (default content or the `tooltip` slot). -->
+    <div v-if="showHoverTip" ref="tip" class="gantt-tooltip" :style="hoverTipStyle" role="tooltip">
+      <slot name="tooltip" :task="resolved">
+        <span class="gantt-tooltip__name">{{ resolved.name }}</span>
+        <span class="gantt-tooltip__dates">
+          {{ format(resolved.start, 'd MMM yyyy') }} – {{ format(resolved.end, 'd MMM yyyy') }}
+        </span>
+        <span class="gantt-tooltip__progress">{{ Math.round(resolved.progress) }}%</span>
+      </slot>
+    </div>
   </div>
 </template>
 
@@ -249,6 +298,28 @@ const tooltipStyle = computed(() =>
   outline-offset: 1px;
 }
 
+/* Critical-path highlight. */
+.gantt-bar[data-critical] {
+  outline: var(--gantt-critical-outline, 2px solid var(--gantt-critical-color, #dc2626));
+  outline-offset: 1px;
+}
+
+/* Bar finishes past its deadline. */
+.gantt-bar[data-overdue] {
+  outline: var(--gantt-overdue-outline, 1.5px solid var(--gantt-deadline-color, #dc2626));
+  outline-offset: 1px;
+  background-image: var(
+    --gantt-overdue-bg,
+    linear-gradient(var(--gantt-overdue-tint, rgb(220 38 38 / 12%)), var(--gantt-overdue-tint, rgb(220 38 38 / 12%)))
+  );
+}
+
+/* Bar breaches an upper-bound scheduling constraint. */
+.gantt-bar[data-constraint-violation] {
+  outline: var(--gantt-constraint-outline, 1.5px dashed var(--gantt-constraint-color, #f59e0b));
+  outline-offset: 1px;
+}
+
 /* Overlap mode: overlapping bars become translucent so the shared span blends. */
 .gantt-task[data-overlap='overlap'][data-overlapping] .gantt-bar {
   opacity: var(--gantt-overlap-opacity, 0.6);
@@ -283,6 +354,39 @@ const tooltipStyle = computed(() =>
   background: var(--gantt-progress-bg, #6366f1);
 }
 
+/* Split task: the bar itself is transparent; segments carry the fill, and the
+   connector line shows through the paused gaps between them. */
+.gantt-bar[data-split] {
+  background: transparent;
+}
+
+.gantt-bar__split-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--gantt-split-line-width, 2px);
+  transform: translateY(-50%);
+  background: var(--gantt-split-line-color, var(--gantt-progress-bg, #6366f1));
+}
+
+.gantt-bar__segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: var(--gantt-split-segment-bg, var(--gantt-bar-bg, #c7d2fe));
+  border-radius: var(--gantt-split-segment-radius, var(--gantt-bar-radius, 4px));
+}
+
+.gantt-bar__segment-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--gantt-progress-bg, #6366f1);
+}
+
 .gantt-bar__label {
   position: relative;
   padding: 0 8px;
@@ -307,5 +411,28 @@ const tooltipStyle = computed(() =>
   color: var(--gantt-drag-label-color, #fff);
   background: var(--gantt-drag-label-bg, #1e293b);
   border-radius: var(--gantt-drag-label-radius, 4px);
+}
+
+/* Opt-in hover tooltip, floating just above the bar (defaults mirror the drag label). */
+.gantt-tooltip {
+  position: absolute;
+  top: 0;
+  margin-top: -2em;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 8px;
+  max-width: max-content;
+  white-space: nowrap;
+  pointer-events: none;
+  font-size: var(--gantt-tooltip-font-size, var(--gantt-drag-label-font-size, 0.72em));
+  color: var(--gantt-tooltip-color, var(--gantt-drag-label-color, #fff));
+  background: var(--gantt-tooltip-bg, var(--gantt-drag-label-bg, #1e293b));
+  border-radius: var(--gantt-tooltip-radius, var(--gantt-drag-label-radius, 4px));
+  box-shadow: var(--gantt-tooltip-shadow, 0 2px 8px rgb(0 0 0 / 25%));
+}
+.gantt-tooltip__name {
+  font-weight: 600;
 }
 </style>

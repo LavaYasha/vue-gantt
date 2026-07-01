@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { ref } from 'vue'
 import Gantt from '../components/Gantt.vue'
+import GanttZoom from '../components/GanttZoom.vue'
 import type { GanttMoveEvent, GanttRow } from '../types'
 import { sampleRows } from './_shared'
 
@@ -35,15 +36,49 @@ const meta: Meta<typeof Gantt> = {
     rowHeight: { control: { type: 'number', min: 16, max: 80 } },
     headerRowHeight: { control: { type: 'number', min: 16, max: 60 } },
     sidebarWidth: { control: { type: 'number', min: 80, max: 400 } },
-    height: { control: { type: 'number', min: 120, max: 800 }, description: 'Scroll viewport height (enables virtualization).' },
+    height: {
+      control: { type: 'number', min: 120, max: 800 },
+      description: 'Scroll viewport height (enables virtualization).',
+    },
     draggable: { control: 'boolean', description: 'Drag bars to change start/end.' },
     rowMovable: { control: 'boolean', description: 'Drag a task into another row.' },
-    resizable: { control: 'boolean', description: 'Resize bars by dragging an edge (sides flip past each other).' },
-    progressDraggable: { control: 'boolean', description: 'Edit progress by dragging a handle on the bar.' },
-    linkable: { control: 'boolean', description: 'Create/edit dependencies by dragging between tasks.' },
-    snapToGrid: { control: 'boolean', description: 'Snap dragged dates to the base unit (off = full precision).' },
+    resizable: {
+      control: 'boolean',
+      description: 'Resize bars by dragging an edge (sides flip past each other).',
+    },
+    progressDraggable: {
+      control: 'boolean',
+      description: 'Edit progress by dragging a handle on the bar.',
+    },
+    linkable: {
+      control: 'boolean',
+      description: 'Create/edit dependencies by dragging between tasks.',
+    },
+    tooltip: {
+      control: 'boolean',
+      description: 'Show a hover tooltip on bars/milestones.',
+    },
+    criticalPath: {
+      control: 'boolean',
+      description: 'Highlight the tasks on the critical path (`data-critical`).',
+    },
+    slack: {
+      control: 'boolean',
+      description: "Draw each task's free-float slack as a translucent bar.",
+    },
+    snapToGrid: {
+      control: 'boolean',
+      description: 'Snap dragged dates to the base unit (off = full precision).',
+    },
+    autoSchedule: {
+      control: 'boolean',
+      description:
+        'Push finish-to-start successors forward on a move/resize/link change ' +
+        '(MS-Project style). Effective only with `v-model:rows`.',
+    },
     today: { control: 'text' },
     labelFormat: { control: 'text' },
+    'onZoom-change': { action: 'zoom-change', table: { category: 'events' } },
     onMove: { action: 'move', table: { category: 'events' } },
     onResize: { action: 'resize', table: { category: 'events' } },
     onProgress: { action: 'progress', table: { category: 'events' } },
@@ -97,24 +132,78 @@ export const MultipleTiers: Story = {
         id: 'planning',
         name: 'Planning',
         tasks: [
-          { id: 'research', name: 'Research', start: '2026-04-01', end: '2026-04-18', progress: 100 },
-          { id: 'spec', name: 'Spec', start: '2026-04-20', end: '2026-05-04', progress: 100, dependencies: ['research'] },
+          {
+            id: 'research',
+            name: 'Research',
+            start: '2026-04-01',
+            end: '2026-04-18',
+            progress: 100,
+          },
+          {
+            id: 'spec',
+            name: 'Spec',
+            start: '2026-04-20',
+            end: '2026-05-04',
+            progress: 100,
+            dependencies: ['research'],
+          },
         ],
       },
       {
         id: 'design',
         name: 'Design',
-        tasks: [{ id: 'design', name: 'Design', start: '2026-05-04', end: '2026-05-25', progress: 70, dependencies: ['spec'] }],
+        tasks: [
+          {
+            id: 'design',
+            name: 'Design',
+            start: '2026-05-04',
+            end: '2026-05-25',
+            progress: 70,
+            dependencies: ['spec'],
+          },
+        ],
       },
       {
         id: 'dev',
         name: 'Development',
         tasks: [
-          { id: 'build', name: 'Implementation', start: '2026-05-25', end: '2026-06-22', progress: 30, dependencies: ['design'] },
-          { id: 'ship', name: 'Ship', type: 'milestone', start: '2026-06-29', dependencies: ['build'] },
+          {
+            id: 'build',
+            name: 'Implementation',
+            start: '2026-05-25',
+            end: '2026-06-22',
+            progress: 30,
+            dependencies: ['design'],
+          },
+          {
+            id: 'ship',
+            name: 'Ship',
+            type: 'milestone',
+            start: '2026-06-29',
+            dependencies: ['build'],
+          },
         ],
       },
     ],
+  },
+}
+
+/**
+ * `labelFormat` accepts a per-tier map of date-fns formats, so each header row
+ * reads differently: full month + year up top, ISO week in the middle, day-of-month
+ * with a weekday at the bottom. Tiers left out of the map keep their defaults.
+ * (A bare string would instead format the base unit only; a `(date, tier) => string`
+ * function gives full control.)
+ */
+export const PerTierLabelFormat: Story = {
+  args: {
+    tiers: ['month', 'week', 'day'],
+    columnWidth: 44,
+    labelFormat: {
+      month: 'LLLL yyyy',
+      week: "'W'w",
+      day: 'd EEEEE',
+    },
   },
 }
 
@@ -130,15 +219,16 @@ export const HourTier: Story = {
  */
 export const DragAndDrop: Story = {
   args: { draggable: true, rowMovable: true },
-  render: (args) => ({
+  render: args => ({
     components: { Gantt },
     setup() {
       // Own a local copy so the drag actually moves tasks in this demo.
       const rows = ref<GanttRow[]>(JSON.parse(JSON.stringify(sampleRows)))
       function onMove(e: GanttMoveEvent) {
-        for (const row of rows.value) row.tasks = (row.tasks ?? []).filter((t) => t.id !== e.id)
-        const target = rows.value.find((r) => r.id === e.toRowId)
-        if (target) target.tasks = [...(target.tasks ?? []), { id: e.id, start: e.start, end: e.end }]
+        for (const row of rows.value) row.tasks = (row.tasks ?? []).filter(t => t.id !== e.id)
+        const target = rows.value.find(r => r.id === e.toRowId)
+        if (target)
+          target.tasks = [...(target.tasks ?? []), { id: e.id, start: e.start, end: e.end }]
       }
       return { args, rows, onMove }
     },
@@ -152,8 +242,14 @@ export const DragAndDrop: Story = {
  * `@move`/`@resize`/… handlers. (The controlled events still fire if you want them.)
  */
 export const VModelRows: Story = {
-  args: { draggable: true, rowMovable: true, resizable: true, progressDraggable: true, linkable: true },
-  render: (args) => ({
+  args: {
+    draggable: true,
+    rowMovable: true,
+    resizable: true,
+    progressDraggable: true,
+    linkable: true,
+  },
+  render: args => ({
     components: { Gantt },
     setup() {
       const rows = ref<GanttRow[]>(JSON.parse(JSON.stringify(sampleRows)))
@@ -186,7 +282,7 @@ export const Virtualized: Story = {
 
 /** Everything is themed via `--gantt-*` custom properties — no prop changes. */
 export const Theming: Story = {
-  render: (args) => ({
+  render: args => ({
     components: { Gantt },
     setup: () => ({ args }),
     template: `
@@ -217,19 +313,95 @@ export const Grouping: Story = {
       { id: 'g-fe', name: 'Frontend', collapsed: true },
     ],
     rows: [
-      { id: 'gr-api', name: 'API', groupId: 'g-be', tasks: [{ id: 'g-api', name: 'API', start: '2026-06-01', end: '2026-06-10', progress: 80 }] },
-      { id: 'gr-db', name: 'Database', groupId: 'g-be', tasks: [{ id: 'g-db', name: 'Schema', start: '2026-06-06', end: '2026-06-14', progress: 40 }] },
-      { id: 'gr-ui', name: 'UI', groupId: 'g-fe', tasks: [{ id: 'g-ui', name: 'Components', start: '2026-06-10', end: '2026-06-20', progress: 20 }] },
-      { id: 'gr-ux', name: 'UX', groupId: 'g-fe', tasks: [{ id: 'g-ux', name: 'Flows', start: '2026-06-12', end: '2026-06-18' }] },
+      {
+        id: 'gr-api',
+        name: 'API',
+        groupId: 'g-be',
+        tasks: [{ id: 'g-api', name: 'API', start: '2026-06-01', end: '2026-06-10', progress: 80 }],
+      },
+      {
+        id: 'gr-db',
+        name: 'Database',
+        groupId: 'g-be',
+        tasks: [
+          { id: 'g-db', name: 'Schema', start: '2026-06-06', end: '2026-06-14', progress: 40 },
+        ],
+      },
+      {
+        id: 'gr-ui',
+        name: 'UI',
+        groupId: 'g-fe',
+        tasks: [
+          { id: 'g-ui', name: 'Components', start: '2026-06-10', end: '2026-06-20', progress: 20 },
+        ],
+      },
+      {
+        id: 'gr-ux',
+        name: 'UX',
+        groupId: 'g-fe',
+        tasks: [{ id: 'g-ux', name: 'Flows', start: '2026-06-12', end: '2026-06-18' }],
+      },
     ],
     tiers: ['month', 'week', 'day'],
     height: 300,
   },
 }
 
+/**
+ * Opt in to the hover tooltip with the `tooltip` prop: hover any bar or
+ * milestone to see a floating summary. The default content is the name plus
+ * `start – end` and `progress%` for a bar, or the name plus the date for a
+ * milestone. It's hidden while dragging.
+ */
+export const Tooltip: Story = {
+  args: { tooltip: true },
+}
+
+/**
+ * Override the tooltip content with the scoped `tooltip` slot (`{ task }`).
+ * Providing the slot also enables the tooltip — the `tooltip` prop isn't needed.
+ */
+export const CustomTooltipSlot: Story = {
+  render: args => ({
+    components: { Gantt },
+    setup: () => ({ args }),
+    template: `
+      <Gantt v-bind="args">
+        <template #tooltip="{ task }">
+          <strong>{{ task.name }}</strong>
+          <span style="opacity:.8">{{ task.progress }}% complete</span>
+        </template>
+      </Gantt>`,
+  }),
+}
+
+/**
+ * A zoom level is a view-mode preset (a named `tiers` + `columnWidth` bundle).
+ * Drop the headless `<GanttZoom>` control into the `corner` slot and bind the
+ * active level id with `v-model:zoom`: the − / select / + control switches
+ * presets (`DEFAULT_ZOOM_LEVELS` by default), overriding the `tiers`/`columnWidth`
+ * props. `zoom-change` fires on every switch.
+ */
+export const Zoom: Story = {
+  args: { height: 300 },
+  render: args => ({
+    components: { Gantt, GanttZoom },
+    setup() {
+      const zoom = ref('week')
+      return { args, zoom }
+    },
+    template: `
+      <Gantt v-bind="args" v-model:zoom="zoom">
+        <template #corner>
+          <GanttZoom />
+        </template>
+      </Gantt>`,
+  }),
+}
+
 /** Override a bar's content with the `bar` slot. */
 export const CustomBarSlot: Story = {
-  render: (args) => ({
+  render: args => ({
     components: { Gantt },
     setup: () => ({ args }),
     template: `
@@ -250,7 +422,7 @@ export const CustomBarSlot: Story = {
  * `(date) => number`. Here it draws a custom labelled marker at "today".
  */
 export const CustomTodaySlot: Story = {
-  render: (args) => ({
+  render: args => ({
     components: { Gantt },
     setup: () => ({ args }),
     template: `
@@ -271,4 +443,89 @@ export const CustomTodaySlot: Story = {
         </template>
       </Gantt>`,
   }),
+}
+
+/**
+ * Two opt-in schedule overlays. `critical-path` highlights the longest
+ * finish-to-start chain (`spec → design → build → ship`) — those bars/markers get
+ * `data-critical`, styled via `--gantt-critical-*`. `slack` draws each task's free
+ * float (the gap to its nearest successor's start) as a translucent bar, styled via
+ * `--gantt-slack-*`: here `spec` and `qa` finish well before their successors begin,
+ * so a slack bar trails them; the critical-path tasks are back-to-back, so they have
+ * none. The `criticalPath` / `slack` utilities expose the same numbers headless.
+ */
+export const CriticalPathAndSlack: Story = {
+  args: {
+    criticalPath: true,
+    slack: true,
+    tiers: ['month', 'week', 'day'],
+    columnWidth: 40,
+    height: 300,
+    rows: [
+      {
+        id: 'planning',
+        name: 'Planning',
+        tasks: [
+          // Finishes Jun-08 but `design` only starts Jun-12 → 4 days of slack.
+          { id: 'spec', name: 'Spec', start: '2026-06-01', end: '2026-06-08', progress: 100 },
+        ],
+      },
+      {
+        id: 'design',
+        name: 'Design',
+        tasks: [
+          {
+            id: 'design',
+            name: 'Design',
+            start: '2026-06-12',
+            end: '2026-06-20',
+            progress: 60,
+            dependencies: ['spec'],
+          },
+        ],
+      },
+      {
+        id: 'dev',
+        name: 'Development',
+        tasks: [
+          {
+            id: 'build',
+            name: 'Implementation',
+            start: '2026-06-20',
+            end: '2026-06-30',
+            progress: 30,
+            dependencies: ['design'],
+          },
+        ],
+      },
+      {
+        id: 'qa',
+        name: 'QA',
+        tasks: [
+          // Off the critical path; finishes Jun-18 but `ship` waits → slack.
+          {
+            id: 'qa',
+            name: 'Testing',
+            start: '2026-06-12',
+            end: '2026-06-18',
+            progress: 20,
+            dependencies: ['spec'],
+          },
+        ],
+      },
+      {
+        id: 'release',
+        name: 'Release',
+        tasks: [
+          {
+            id: 'ship',
+            name: 'Ship',
+            type: 'milestone',
+            start: '2026-06-30',
+            dependencies: ['build', 'qa'],
+          },
+        ],
+      },
+    ],
+  },
 }

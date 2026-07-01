@@ -74,6 +74,91 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Undo / redo.** New `useGanttHistory(rowsRef, { limit? })` composable — a snapshot
+  history over the `rows` ref you bind to `v-model:rows`. Every edit (move/resize/
+  progress/dependency, all funnelled through one `update:rows`) is recorded as one
+  entry; `undo` / `redo` restore a snapshot into the ref without recording it, with
+  reactive `canUndo` / `canRedo` and `clear`. Snapshots are cheap (the immutable edit
+  utilities share structure — no deep clone); the composable is context-free and
+  SSR-safe. Exports `GanttHistory` / `GanttHistoryOptions`.
+- **Split tasks.** A new `GanttTask.segments` field (`{ start, end }[]`) draws the bar
+  as separate work spans with a thin connector line through the paused gaps, all inside
+  the single `.gantt-bar` (so drag/resize/handles are unchanged; `start`/`end` still
+  define the overall extent). Progress fills cumulatively through the segments' working
+  time (early segments first). Coerced to `Date`s in `normalizeTask`; supported
+  declaratively via `<GanttTask :segments>`. The `GanttSegment` / `ResolvedSegment`
+  types are exported, with `--gantt-split-*` theme tokens.
+- **Baselines (planned vs actual).** New `GanttTask` fields `baselineStart` /
+  `baselineEnd` (the planned interval) are drawn as a thin "shadow" bar at the bottom
+  of the task's row band, under the actual bar, by the new headless `GanttBaselines`
+  overlay (default slot `{ task }`, `baselines` section slot, `--gantt-baseline-*`
+  tokens). Coerced to `Date` in `normalizeTask` (never milestone-collapsed); rendered
+  only for tasks that set both fields; supported declaratively via
+  `<GanttTask baseline-start baseline-end>`.
+- **Task constraints & deadlines.** New `GanttTask` fields: `deadline` (a target date,
+  rendered as a per-task vertical line by the new headless `GanttDeadlines` overlay; the
+  bar is flagged `data-overdue` when it finishes past it) and `constraint`
+  (`{ type: GanttConstraintType; date }`, the full MS-Project set SNET/SNLT/FNET/FNLT/
+  MSO/MFO). `autoSchedule` honors the lower bounds (pushes a task's start to satisfy
+  `*-no-earlier-than` / `must-*-on`); upper bounds are surfaced as violations
+  (`data-constraint-violation`). New exported pure helpers `isOverdue` /
+  `violatesConstraint`, the `GanttDeadlines` component and `deadlines` slot, the
+  `GanttConstraint` / `GanttConstraintType` types, and `--gantt-deadline-*` /
+  `--gantt-overdue-*` / `--gantt-constraint-*` theme tokens.
+- **Interactive auto-scheduling** — opt-in `autoSchedule` prop on `Gantt`/`GanttRoot`.
+  When on, a move/resize or a dependency create/update pushes the changed task's
+  finish-to-start successors forward (preserving durations, MS-Project style) by
+  applying the existing `autoSchedule` utility to the emitted `update:rows`. Effective
+  only with `v-model:rows` / prop-driven `rows`; the live drag ghost is unaffected
+  (successors snap into place on release).
+- **Critical path & slack** visualization. Two opt-in props on `Gantt`/`GanttRoot`:
+  `criticalPath` highlights the critical-path tasks (a `data-critical` attribute on
+  their bars/milestone markers, themed via `--gantt-critical-color` /
+  `--gantt-critical-outline`), reusing the existing `criticalPath(rows)` utility;
+  `slack` renders each task's free float as a translucent bar from its end to its
+  nearest successor's start, via the new headless `GanttSlack` overlay (default
+  slot `{ taskId, slack }`, `slack` section slot, `--gantt-slack-*` tokens). The
+  new pure `slack(rows): Map<string, number>` utility (free float in days) is
+  exported alongside `GanttSlack`.
+- `sortRows` / `filterRows` data utilities — pure, immutable helpers to reorder or
+  filter `GanttRow[]` by a comparator/predicate (the chart stays controlled: pass
+  the result back as `rows`). Build comparators from row data, e.g. `tasksExtent`
+  (dates) or `rollupProgress` (progress).
+- Per-tier timeline label formatting. The `labelFormat` prop on `Gantt`/`GanttRoot`
+  is now a `GanttLabelFormat`: a date-fns `string` (applied to the base unit only,
+  as before), a per-tier map `Partial<Record<GanttUnit, string>>` (missing tiers
+  keep their defaults), or a `(date, tier) => string` function for full control.
+  The `GanttLabelFormat` type is exported from the package.
+- Opt-in **hover tooltip** on bars and milestones. Enable it with the `tooltip`
+  prop on `Gantt`/`GanttRoot`, or by providing the new scoped `tooltip` slot
+  (`{ task }`), which both enables the tooltip and overrides its content. The
+  default content is the name plus `start – end` and `progress%` for a bar, or the
+  name plus the date for a milestone; it is hidden while dragging. Themeable via
+  the new `--gantt-tooltip-bg` / `-color` / `-radius` / `-font-size` / `-shadow`
+  CSS variables (which inherit the drag-label look by default).
+- **Zoom / view-mode** switching. Named zoom levels (presets bundling `tiers` +
+  `columnWidth`) selected by the `zoom` prop with `v-model:zoom`; `zoomLevels`
+  overrides the built-in `DEFAULT_ZOOM_LEVELS` (year → hour, exported). State is
+  uncontrolled (seeded from `zoom`) — `Gantt`/`GanttRoot` expose imperative
+  `setZoom(id)` / `zoomIn()` / `zoomOut()` (and `GanttRoot` `activeZoom`), and emit
+  `zoom-change` (`GanttZoomEvent`). A new headless `GanttZoom` control (− / level
+  select / +) drives it from inside the chart (e.g. the `corner` slot); its default
+  slot exposes `{ levels, active, setZoom, zoomIn, zoomOut, canZoomIn, canZoomOut }`
+  for a custom UI. Themeable via `--gantt-zoom-*` variables. The `GanttZoomLevel`
+  and `GanttZoomEvent` types are exported.
+
+### Fixed
+
+- Hover tooltip / milestone interaction polish:
+  - A dependency arrow crossing a milestone marker no longer swallows the marker's
+    pointer events — the marker now sits above the dependency layer, so its
+    hover/click/drag (and tooltip) work even under an arrow.
+  - The floating hover tooltip is clamped to the chart's content bounds, so a bar
+    or milestone tooltip near the right/left edge (e.g. the last column) is no
+    longer clipped.
+
 ### Release / tooling
 
 - The package is published as **`@dizzy_yakov/vue-gantt`** (scoped, public access).

@@ -17,6 +17,7 @@ import {
   GanttToday,
   removeDependency,
   updateTask,
+  useGanttHistory,
   type GanttDependencyChange,
   type GanttDependencyUpdate,
   type GanttDragLabelInfo,
@@ -42,7 +43,7 @@ const enabled = ref<Record<GanttUnit, boolean>>({
   minute: false,
 })
 
-const tiers = computed<GanttUnit[]>(() => ALL_TIERS.filter((t) => enabled.value[t]))
+const tiers = computed<GanttUnit[]>(() => ALL_TIERS.filter(t => enabled.value[t]))
 
 const columnWidth = computed(() => {
   const finest = tiers.value.at(-1)
@@ -57,6 +58,8 @@ const rowMovable = ref(true)
 const resizable = ref(true)
 const progressDraggable = ref(true)
 const linkable = ref(true)
+// Auto-scheduling (cascade successors on move/resize/link) — v-model:rows only.
+const autoSchedule = ref(true)
 
 // Custom drag tooltip text for every drag kind (move / resize / progress).
 const dragLabel = (i: GanttDragLabelInfo) =>
@@ -73,21 +76,41 @@ const rows = ref<GanttRowData[]>([
     name: 'Planning',
     tasks: [
       { id: 'spec', name: 'Specification', start: '2026-06-01', end: '2026-06-08', progress: 100 },
-      { id: 'review', name: 'Review', type: 'milestone', start: '2026-06-30', dependencies: ['build'] },
+      {
+        id: 'review',
+        name: 'Review',
+        type: 'milestone',
+        start: '2026-06-30',
+        dependencies: ['build'],
+      },
     ],
   },
   {
     id: 'r-design',
     name: 'Design',
     tasks: [
-      { id: 'design', name: 'Design', start: '2026-06-08', end: '2026-06-16', progress: 70, dependencies: ['spec'] },
+      {
+        id: 'design',
+        name: 'Design',
+        start: '2026-06-08',
+        end: '2026-06-16',
+        progress: 70,
+        dependencies: ['spec'],
+      },
     ],
   },
   {
     id: 'r-dev',
     name: 'Development',
     tasks: [
-      { id: 'build', name: 'Implementation', start: '2026-06-16', end: '2026-06-28', progress: 30, dependencies: ['design'] },
+      {
+        id: 'build',
+        name: 'Implementation',
+        start: '2026-06-16',
+        end: '2026-06-28',
+        progress: 30,
+        dependencies: ['design'],
+      },
       { id: 'polish', name: 'Polish', start: '2026-06-22', end: '2026-06-27', progress: 0 },
     ],
   },
@@ -124,10 +147,25 @@ const vmodelRows = ref<GanttRowData[]>([
     id: 'vm-dev',
     name: 'Development',
     tasks: [
-      { id: 'vm-build', name: 'Build', start: '2026-06-09', end: '2026-06-20', progress: 30, dependencies: ['vm-spec'] },
+      {
+        id: 'vm-build',
+        name: 'Build',
+        start: '2026-06-09',
+        end: '2026-06-20',
+        progress: 30,
+        dependencies: ['vm-spec'],
+      },
     ],
   },
 ])
+
+// Undo/redo over the same `vmodelRows` ref — every `update:rows` is one snapshot.
+const {
+  undo: undoVmodel,
+  redo: redoVmodel,
+  canUndo: canUndoVmodel,
+  canRedo: canRedoVmodel,
+} = useGanttHistory(vmodelRows)
 
 // Apply a completed drag with the library's `applyMove` helper (controlled data).
 const onMoveRows = (e: GanttMoveEvent) => (rows.value = applyMove(rows.value, e))
@@ -138,8 +176,10 @@ const onResizeRows = (e: GanttResizeEvent) =>
   (rows.value = updateTask(rows.value, e.id, { start: e.start, end: e.end }))
 const onProgressRows = (e: GanttProgressEvent) =>
   (rows.value = updateTask(rows.value, e.id, { progress: e.progress }))
-const onCreateDep = (e: GanttDependencyChange) => (rows.value = addDependency(rows.value, e.from, e.to))
-const onRemoveDep = (e: GanttDependencyChange) => (rows.value = removeDependency(rows.value, e.from, e.to))
+const onCreateDep = (e: GanttDependencyChange) =>
+  (rows.value = addDependency(rows.value, e.from, e.to))
+const onRemoveDep = (e: GanttDependencyChange) =>
+  (rows.value = removeDependency(rows.value, e.from, e.to))
 const onUpdateDep = (e: GanttDependencyUpdate) =>
   (rows.value = addDependency(
     removeDependency(rows.value, e.previous.from, e.previous.to),
@@ -157,10 +197,32 @@ const groups = ref<GanttGroupData[]>([
   { id: 'g-fe', name: 'Frontend', collapsed: true },
 ])
 const groupedRows = ref<GanttRowData[]>([
-  { id: 'gr-api', name: 'API', groupId: 'g-be', tasks: [{ id: 'g-api', name: 'API', start: '2026-06-01', end: '2026-06-10', progress: 80 }] },
-  { id: 'gr-db', name: 'Database', groupId: 'g-be', tasks: [{ id: 'g-db', name: 'Schema', start: '2026-06-06', end: '2026-06-14', progress: 40 }] },
-  { id: 'gr-ui', name: 'UI', groupId: 'g-fe', tasks: [{ id: 'g-ui', name: 'Components', start: '2026-06-10', end: '2026-06-20', progress: 20 }] },
-  { id: 'gr-ux', name: 'UX', groupId: 'g-fe', tasks: [{ id: 'g-ux', name: 'Flows', start: '2026-06-12', end: '2026-06-18', progress: 0 }] },
+  {
+    id: 'gr-api',
+    name: 'API',
+    groupId: 'g-be',
+    tasks: [{ id: 'g-api', name: 'API', start: '2026-06-01', end: '2026-06-10', progress: 80 }],
+  },
+  {
+    id: 'gr-db',
+    name: 'Database',
+    groupId: 'g-be',
+    tasks: [{ id: 'g-db', name: 'Schema', start: '2026-06-06', end: '2026-06-14', progress: 40 }],
+  },
+  {
+    id: 'gr-ui',
+    name: 'UI',
+    groupId: 'g-fe',
+    tasks: [
+      { id: 'g-ui', name: 'Components', start: '2026-06-10', end: '2026-06-20', progress: 20 },
+    ],
+  },
+  {
+    id: 'gr-ux',
+    name: 'UX',
+    groupId: 'g-fe',
+    tasks: [{ id: 'g-ux', name: 'Flows', start: '2026-06-12', end: '2026-06-18', progress: 0 }],
+  },
 ])
 const lastToggle = ref('')
 const onGroupToggle = (e: GanttGroupToggleEvent) => {
@@ -203,6 +265,10 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
         <input v-model="linkable" type="checkbox" />
         edit dependencies
       </label>
+      <label class="control__item">
+        <input v-model="autoSchedule" type="checkbox" />
+        auto-schedule (v-model only)
+      </label>
     </fieldset>
 
     <section>
@@ -237,8 +303,16 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
     <section>
       <h2>1b. Two-way binding (<code>v-model:rows</code>) — no manual handlers</h2>
       <p class="hint">
-        Drag / resize / progress / dependency edits apply straight to
-        <code>vmodelRows</code>. First task: <strong>{{ vmodelRows[0]?.tasks?.[0]?.start }}</strong>.
+        <button type="button" class="btn" :disabled="!canUndoVmodel" @click="undoVmodel">
+          Undo
+        </button>
+        <button type="button" class="btn" :disabled="!canRedoVmodel" @click="redoVmodel">
+          Redo
+        </button>
+        — undo/redo через <code>useGanttHistory(vmodelRows)</code>. Drag / resize / progress /
+        dependency edits apply straight to <code>vmodelRows</code>. First task:
+        <strong>{{ vmodelRows[0]?.tasks?.[0]?.start }}</strong
+        >.
       </p>
       <div class="card">
         <Gantt
@@ -251,6 +325,7 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
           :resizable="resizable"
           :progress-draggable="progressDraggable"
           :linkable="linkable"
+          :auto-schedule="autoSchedule"
           :drag-label="dragLabel"
         />
       </div>
@@ -259,7 +334,7 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
     <section>
       <h2>2. Declarative (<code>&lt;GanttRow&gt;</code> + <code>&lt;GanttTask&gt;</code>)</h2>
       <div class="card">
-        <GanttRoot :tiers="tiers" :column-width="columnWidth" >
+        <GanttRoot :tiers="tiers" :column-width="columnWidth">
           <div class="manual">
             <div class="manual__side">
               <div class="manual__corner" />
@@ -270,7 +345,13 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
               <div class="manual__body">
                 <GanttGrid />
                 <GanttRow id="r-plan" name="Planning">
-                  <GanttTask id="d-spec" name="Spec" start="2026-06-01" end="2026-06-08" :progress="100" />
+                  <GanttTask
+                    id="d-spec"
+                    name="Spec"
+                    start="2026-06-01"
+                    end="2026-06-08"
+                    :progress="100"
+                  />
                 </GanttRow>
                 <GanttRow id="r-dev" name="Development">
                   <GanttTask
@@ -295,20 +376,15 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
     <section>
       <h2>3. Custom design system via CSS variables</h2>
       <div class="card themed">
-        <Gantt
-          :rows="rows"
-          :tiers="tiers"
-          :column-width="columnWidth"
-          :height="240"
-        />
+        <Gantt :rows="rows" :tiers="tiers" :column-width="columnWidth" :height="240" />
       </div>
     </section>
 
     <section>
       <h2>5. Row grouping — collapsible groups + rollup bars</h2>
       <p class="hint">
-        Rows reference a group via <code>groupId</code>; click a group header to
-        collapse/expand. Last toggle: <strong>{{ lastToggle || '—' }}</strong>
+        Rows reference a group via <code>groupId</code>; click a group header to collapse/expand.
+        Last toggle: <strong>{{ lastToggle || '—' }}</strong>
       </p>
       <div class="card">
         <Gantt
@@ -340,10 +416,22 @@ const onMoveGrouped = (e: GanttMoveEvent) => (groupedRows.value = applyMove(grou
                 <GanttGrid />
                 <GanttGroup id="dg-be" name="Backend">
                   <GanttRow id="dg-api" name="API">
-                    <GanttTask id="dt-api" name="API" start="2026-06-01" end="2026-06-09" :progress="60" />
+                    <GanttTask
+                      id="dt-api"
+                      name="API"
+                      start="2026-06-01"
+                      end="2026-06-09"
+                      :progress="60"
+                    />
                   </GanttRow>
                   <GanttRow id="dg-db" name="Database">
-                    <GanttTask id="dt-db" name="Schema" start="2026-06-05" end="2026-06-12" :progress="30" />
+                    <GanttTask
+                      id="dt-db"
+                      name="Schema"
+                      start="2026-06-05"
+                      end="2026-06-12"
+                      :progress="30"
+                    />
                   </GanttRow>
                 </GanttGroup>
                 <GanttGroup id="dg-fe" name="Frontend" :collapsed="true">

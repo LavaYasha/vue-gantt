@@ -32,6 +32,105 @@ describe('normalizeTask', () => {
     const d = new Date(2026, 0, 1)
     expect(toDate(d)).toBe(d)
   })
+
+  it('coerces baseline strings into Dates', () => {
+    const task = normalizeTask(
+      { id: 'a', start: '2026-01-01', end: '2026-01-20', baselineStart: '2026-01-05', baselineEnd: '2026-01-12' },
+      'r',
+      0,
+    )
+    expect(task.baselineStart).toBeInstanceOf(Date)
+    expect(task.baselineEnd).toBeInstanceOf(Date)
+    expect(task.baselineStart!.getTime()).toBe(new Date(2026, 0, 5).getTime())
+    expect(task.baselineEnd!.getTime()).toBe(new Date(2026, 0, 12).getTime())
+  })
+
+  it('leaves baseline fields undefined when absent', () => {
+    const task = normalizeTask({ id: 'a', start: '2026-01-01', end: '2026-01-05' }, 'r', 0)
+    expect(task.baselineStart).toBeUndefined()
+    expect(task.baselineEnd).toBeUndefined()
+  })
+
+  it('does not collapse a milestone baseline end onto its start', () => {
+    const m = normalizeTask(
+      {
+        id: 'm',
+        type: 'milestone',
+        start: '2026-02-01',
+        end: '2026-02-10',
+        baselineStart: '2026-01-05',
+        baselineEnd: '2026-01-12',
+      },
+      'r',
+      0,
+    )
+    // The actual end collapses onto start for a milestone...
+    expect(m.end.getTime()).toBe(m.start.getTime())
+    // ...but the baseline stays an interval, preserved exactly as given.
+    expect(m.baselineStart!.getTime()).toBe(new Date(2026, 0, 5).getTime())
+    expect(m.baselineEnd!.getTime()).toBe(new Date(2026, 0, 12).getTime())
+    expect(m.baselineEnd!.getTime()).not.toBe(m.baselineStart!.getTime())
+  })
+
+  it('parses a deadline string into a local Date', () => {
+    const task = normalizeTask(
+      { id: 'a', start: '2026-01-01', end: '2026-01-05', deadline: '2026-01-10' },
+      'r',
+      0,
+    )
+    expect(task.deadline).toBeInstanceOf(Date)
+    expect(task.deadline).toEqual(new Date(2026, 0, 10))
+  })
+
+  it('parses a constraint, coercing its date to a Date and keeping the type', () => {
+    const task = normalizeTask(
+      {
+        id: 'a',
+        start: '2026-01-01',
+        end: '2026-01-05',
+        constraint: { type: 'start-no-earlier-than', date: '2026-01-05' },
+      },
+      'r',
+      0,
+    )
+    expect(task.constraint?.type).toBe('start-no-earlier-than')
+    expect(task.constraint?.date).toBeInstanceOf(Date)
+    expect(task.constraint?.date).toEqual(new Date(2026, 0, 5))
+  })
+
+  it('leaves deadline and constraint undefined when absent', () => {
+    const task = normalizeTask({ id: 'a', start: '2026-01-01', end: '2026-01-05' }, 'r', 0)
+    expect(task.deadline).toBeUndefined()
+    expect(task.constraint).toBeUndefined()
+  })
+
+  it('resolves segments from date strings into Date pairs', () => {
+    const task = normalizeTask(
+      {
+        id: 'a',
+        start: '2026-01-01',
+        end: '2026-01-07',
+        segments: [
+          { start: '2026-01-01', end: '2026-01-03' },
+          { start: '2026-01-05', end: '2026-01-07' },
+        ],
+      },
+      'r1',
+      0,
+    )
+    expect(task.segments).toHaveLength(2)
+    expect(task.segments![0]!.start).toBeInstanceOf(Date)
+    expect(task.segments![0]!.end).toBeInstanceOf(Date)
+    expect(task.segments![0]!.start.getTime()).toBe(new Date(2026, 0, 1).getTime())
+    expect(task.segments![0]!.end.getTime()).toBe(new Date(2026, 0, 3).getTime())
+    expect(task.segments![1]!.start.getTime()).toBe(new Date(2026, 0, 5).getTime())
+    expect(task.segments![1]!.end.getTime()).toBe(new Date(2026, 0, 7).getTime())
+  })
+
+  it('leaves segments undefined when absent', () => {
+    const task = normalizeTask({ id: 'a', start: '2026-01-01', end: '2026-01-05' }, 'r1', 0)
+    expect(task.segments).toBeUndefined()
+  })
 })
 
 describe('normalizeRow', () => {
@@ -50,7 +149,7 @@ describe('normalizeRow', () => {
     expect(row.name).toBe('Backend')
     expect(row.order).toBe(3)
     expect(row.tasks).toHaveLength(2)
-    expect(row.tasks.every((t) => t.rowId === 'r1' && t.order === 3)).toBe(true)
+    expect(row.tasks.every(t => t.rowId === 'r1' && t.order === 3)).toBe(true)
   })
 
   it('defaults name to id and tasks to empty', () => {

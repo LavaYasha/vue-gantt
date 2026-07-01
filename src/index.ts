@@ -16,7 +16,11 @@ export { default as GanttMilestone } from './components/GanttMilestone.vue'
 export { default as GanttGrid } from './components/GanttGrid.vue'
 export { default as GanttDependencies } from './components/GanttDependencies.vue'
 export { default as GanttConflicts } from './components/GanttConflicts.vue'
+export { default as GanttSlack } from './components/GanttSlack.vue'
+export { default as GanttDeadlines } from './components/GanttDeadlines.vue'
+export { default as GanttBaselines } from './components/GanttBaselines.vue'
 export { default as GanttToday } from './components/GanttToday.vue'
+export { default as GanttZoom } from './components/GanttZoom.vue'
 
 // Composables
 export { useGanttContext } from './composables/useGanttContext'
@@ -29,11 +33,27 @@ export {
 } from './composables/useTaskRegistry'
 export { useGanttViewport } from './composables/useGanttViewport'
 export { useGanttDrag } from './composables/useGanttDrag'
+export {
+  useGanttHistory,
+  type GanttHistory,
+  type GanttHistoryOptions,
+} from './composables/useGanttHistory'
 
 // Context primitives + layout helpers
-export { GANTT_CONTEXT, GANTT_ROW, GANTT_GROUP, GANTT_DEFAULTS, normalizeRow, normalizeTask, toDate } from './context'
+export {
+  GANTT_CONTEXT,
+  GANTT_ROW,
+  GANTT_GROUP,
+  GANTT_DEFAULTS,
+  normalizeRow,
+  normalizeTask,
+  toDate,
+} from './context'
 export { assignLanes, layoutRows, layoutGroups, conflictSegments } from './layout'
 export type { GroupMeta, GroupedLayout, LayoutGroupsOptions } from './layout'
+
+// Zoom / view-mode presets — pass your own to the `zoomLevels` prop
+export { DEFAULT_ZOOM_LEVELS } from './zoom'
 
 // Dependency connector path builders — pass one (or your own) to `dependencyShape`
 export { elbowPath, straightPath, bezierPath, STUB } from './dependencyPaths'
@@ -48,6 +68,8 @@ export {
   flattenTasks,
   findTask,
   findRow,
+  sortRows,
+  filterRows,
   applyMove,
   updateTask,
   addTask,
@@ -60,7 +82,10 @@ export {
   detectCycles,
   topologicalOrder,
   criticalPath,
+  slack,
   autoSchedule,
+  isOverdue,
+  violatesConstraint,
   validateRows,
 } from './utils'
 
@@ -72,6 +97,8 @@ export type {
   GanttColumnEvent,
   GanttConfig,
   GanttConflict,
+  GanttConstraint,
+  GanttConstraintType,
   GanttContext,
   GanttDependencyChange,
   GanttDependencyEvent,
@@ -83,6 +110,7 @@ export type {
   GanttGroupToggleEvent,
   GanttIssue,
   GanttIssueType,
+  GanttLabelFormat,
   GanttItemType,
   GanttLinkDraft,
   GanttLinkMode,
@@ -94,11 +122,15 @@ export type {
   GanttRow as GanttRowData,
   GanttRowEvent,
   GanttScrollOptions,
+  GanttSegment,
   GanttTask as GanttTaskData,
   GanttTaskEvent,
   GanttUnit,
   GanttViewport,
+  GanttZoomEvent,
+  GanttZoomLevel,
   ResolvedGroup,
   ResolvedRow,
+  ResolvedSegment,
   ResolvedTask,
 } from './types'

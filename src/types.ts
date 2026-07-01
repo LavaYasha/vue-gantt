@@ -8,8 +8,68 @@ import type { DependencyPathBuilder } from './dependencyPaths'
  */
 export type GanttUnit = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'hour' | 'minute'
 
+/**
+ * A named zoom level (view mode): a preset bundle of `tiers` + `columnWidth`
+ * density. The `zoom` prop / `GanttZoom` control switch between these.
+ */
+export interface GanttZoomLevel {
+  /** Stable identifier; also the `v-model:zoom` value (e.g. `'week'`). */
+  id: string
+  /** Display label for the control; defaults to `id`. */
+  label?: string
+  /** Timeline tiers for this level, coarse→fine (the finest drives density). */
+  tiers: GanttUnit[]
+  /** Pixel width of one base-unit (finest tier) cell at this level. */
+  columnWidth: number
+}
+
+/**
+ * How timeline column labels are formatted. Either:
+ * - a date-fns format string — applied to the **base unit** only (other tiers keep
+ *   their defaults);
+ * - a per-tier map of date-fns format strings (missing tiers keep their defaults);
+ * - a function `(date, tier) => string` returning the label directly (full control).
+ */
+export type GanttLabelFormat =
+  | string
+  | Partial<Record<GanttUnit, string>>
+  | ((date: Date, tier: GanttUnit) => string)
+
 /** Type of an item plotted on a row. */
 export type GanttItemType = 'task' | 'milestone'
+
+/** A single work span of a split task (dates as accepted from the consumer). */
+export interface GanttSegment {
+  start: Date | string | number
+  end: Date | string | number
+}
+
+/** A work span after its dates are coerced to `Date`. */
+export interface ResolvedSegment {
+  start: Date
+  end: Date
+}
+
+/**
+ * Scheduling constraint on a task (MS-Project style). Lower bounds
+ * (`*-no-earlier-than`, `must-*-on`) are honored by `autoSchedule` — it pushes the
+ * task's start to satisfy them. Upper bounds (`*-no-later-than`) can't be enforced
+ * by a forward-only scheduler; they're surfaced as a violation via
+ * `violatesConstraint` / the bar's `data-constraint-violation`.
+ */
+export type GanttConstraintType =
+  | 'start-no-earlier-than'
+  | 'start-no-later-than'
+  | 'finish-no-earlier-than'
+  | 'finish-no-later-than'
+  | 'must-start-on'
+  | 'must-finish-on'
+
+/** A task's scheduling constraint: a type paired with the boundary date. */
+export interface GanttConstraint {
+  type: GanttConstraintType
+  date: Date | string | number
+}
 
 /**
  * How tasks that overlap in time on the same row are displayed:
@@ -38,6 +98,19 @@ export interface GanttTask {
   /** Ids of tasks that must finish before this one (drawn as arrows). */
   dependencies?: string[]
   type?: GanttItemType
+  /**
+   * Work segments — when set, the bar is drawn as these spans with paused gaps
+   * between them (a "split" task). `start`/`end` still define the overall extent.
+   */
+  segments?: GanttSegment[]
+  /** Target date drawn as a marker; the bar is flagged overdue when `end` passes it. */
+  deadline?: Date | string | number
+  /** Scheduling constraint (honored by `autoSchedule` for lower bounds). */
+  constraint?: GanttConstraint
+  /** Planned start (baseline). Drawn as a shadow bar under the actual bar. */
+  baselineStart?: Date | string | number
+  /** Planned end (baseline). Drawn together with `baselineStart`. */
+  baselineEnd?: Date | string | number
   /** Arbitrary extra data forwarded to slots untouched. */
   meta?: Record<string, unknown>
 }
@@ -87,6 +160,16 @@ export interface ResolvedTask {
   progress: number
   dependencies: string[]
   type: GanttItemType
+  /** Work segments coerced to `Date`s (absent when the task isn't split). */
+  segments?: ResolvedSegment[]
+  /** Deadline target, coerced to a `Date` (absent when not set). */
+  deadline?: Date
+  /** Scheduling constraint with its date coerced to a `Date` (absent when not set). */
+  constraint?: { type: GanttConstraintType; date: Date }
+  /** Planned start, coerced to a `Date` (absent when no baseline). */
+  baselineStart?: Date
+  /** Planned end, coerced to a `Date` (absent when no baseline). */
+  baselineEnd?: Date
   meta: Record<string, unknown>
   /** Id of the row this task belongs to. */
   rowId: string
@@ -210,6 +293,12 @@ export interface GanttRootProps {
   resizable?: boolean
   /** Allow editing a task's progress by dragging a handle on the bar. */
   progressDraggable?: boolean
+  /** Show a hover tooltip on bars/milestones (override its content via the `tooltip` slot). */
+  tooltip?: boolean
+  /** Highlight the tasks on the critical path (`data-critical` on their bars). */
+  criticalPath?: boolean
+  /** Show each task's free-float slack as a translucent bar after its end. */
+  slack?: boolean
   /** Allow creating/editing dependencies by dragging between tasks. */
   linkable?: boolean
   /**
@@ -226,6 +315,13 @@ export interface GanttRootProps {
   arrowHead?: ArrowHeadBuilder
   /** Snap dragged dates to the base-unit grid. Off by default (full precision). */
   snapToGrid?: boolean
+  /**
+   * On a move/resize or a dependency create/update, push finish-to-start
+   * successors forward so none starts before a predecessor ends (MS-Project
+   * style), preserving each task's duration. Effective only with `v-model:rows`
+   * (or prop-driven `rows`) — the cascade is applied to the emitted `update:rows`.
+   */
+  autoSchedule?: boolean
   /** date-fns format for the live date label shown while dragging. */
   dragLabelFormat?: string
   /** Override the drag tooltip text (move / resize / progress). */
@@ -234,8 +330,23 @@ export interface GanttRootProps {
   startDate?: Date | string | number
   endDate?: Date | string | number
   today?: Date | string | number
-  /** date-fns format string for column labels. */
-  labelFormat?: string
+  /**
+   * Column label formatting. A date-fns string (base unit only), a per-tier map
+   * of format strings, or a `(date, tier) => string` function. See `GanttLabelFormat`.
+   */
+  labelFormat?: GanttLabelFormat
+  /**
+   * Named zoom levels (view-mode presets) the `zoom` prop / `GanttZoom` control
+   * switch between; each bundles `tiers` + `columnWidth`. Defaults to
+   * `DEFAULT_ZOOM_LEVELS` (year → hour).
+   */
+  zoomLevels?: GanttZoomLevel[]
+  /**
+   * Active zoom level id; supports `v-model:zoom`. When set, the matching level's
+   * `tiers`/`columnWidth` override those props. Omit for the classic
+   * `tiers`/`columnWidth`/`unit` behavior (no level active).
+   */
+  zoom?: string
 }
 
 /** Resolved configuration shared with every child component. */
@@ -261,6 +372,12 @@ export interface GanttConfig {
   resizable: boolean
   /** Whether progress can be edited by dragging a handle. */
   progressDraggable: boolean
+  /** Whether a hover tooltip is shown on bars/milestones. */
+  tooltip: boolean
+  /** Whether critical-path tasks are highlighted. */
+  criticalPath: boolean
+  /** Whether free-float slack bars are shown. */
+  slack: boolean
   /** Whether dependencies can be created/edited by dragging. */
   linkable: boolean
   /** Connector path builder `(tail, head) => string` (resolved, never undefined). */
@@ -269,6 +386,8 @@ export interface GanttConfig {
   arrowHead: ArrowHeadBuilder
   /** Whether dragged dates snap to the base-unit grid. */
   snapToGrid: boolean
+  /** Whether successors are auto-rescheduled on a move/resize/link change. */
+  autoSchedule: boolean
   /** date-fns format for the live drag date label. */
   dragLabelFormat: string
   /** Optional override for the drag tooltip text (move / resize / progress). */
@@ -352,6 +471,14 @@ export interface GanttGroupToggleEvent {
   collapsed: boolean
 }
 
+/** Payload emitted when the active zoom level changes. */
+export interface GanttZoomEvent {
+  /** Id of the now-active zoom level. */
+  id: string
+  /** The full level definition that was activated. */
+  level: GanttZoomLevel
+}
+
 /** Payload for pointer interactions on a task bar or milestone marker. */
 export interface GanttTaskEvent {
   /** The task/milestone that was interacted with. */
@@ -418,11 +545,7 @@ export interface GanttEventMap {
 
 /** Kind of problem reported by `validateRows`. */
 export type GanttIssueType =
-  | 'duplicate-row-id'
-  | 'duplicate-task-id'
-  | 'missing-dependency'
-  | 'invalid-range'
-  | 'orphan-group'
+  'duplicate-row-id' | 'duplicate-task-id' | 'missing-dependency' | 'invalid-range' | 'orphan-group'
 
 /** A single data problem found by `validateRows`. */
 export interface GanttIssue {
@@ -521,6 +644,10 @@ export interface GanttContext {
   taskBand: (task: ResolvedTask) => GanttBand
   /** Overlap spans per row (non-empty only in `conflict` mode). */
   conflicts: ComputedRef<GanttConflict[]>
+  /** Ids of the critical-path tasks (empty unless `criticalPath` is on). */
+  criticalTasks: ComputedRef<Set<string>>
+  /** Free-float slack (days) by task id (empty unless `slack` is on). */
+  slack: ComputedRef<Map<string, number>>
   /** Register a declaratively-declared row (used by `GanttRow`). */
   registerRow: (row: GanttRow) => void
   /** Remove a previously registered row. */
@@ -571,4 +698,16 @@ export interface GanttContext {
   scrollToTask: (id: string, options?: GanttScrollOptions) => void
   /** Scroll to the current time (`today`). */
   scrollToToday: (options?: GanttScrollOptions) => void
+  /** Available zoom levels (the `zoomLevels` prop or `DEFAULT_ZOOM_LEVELS`). */
+  zoomLevels: ComputedRef<GanttZoomLevel[]>
+  /** Id of the active zoom level, or `undefined` when no level is active. */
+  activeZoom: ComputedRef<string | undefined>
+  /** Whether a finer (`zoomIn`) / coarser (`zoomOut`) level is available. */
+  canZoomIn: ComputedRef<boolean>
+  canZoomOut: ComputedRef<boolean>
+  /** Activate a zoom level by id (re-emitted as `update:zoom` + `zoom-change`). */
+  setZoom: (id: string) => void
+  /** Step to the next finer / coarser zoom level (clamped at the ends). */
+  zoomIn: () => void
+  zoomOut: () => void
 }

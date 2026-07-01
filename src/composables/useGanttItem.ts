@@ -1,6 +1,6 @@
 import { computed, inject } from 'vue'
 import { GANTT_ROW, normalizeTask } from '../context'
-import type { GanttTask, ResolvedTask } from '../types'
+import type { GanttConstraint, GanttSegment, GanttTask, ResolvedTask } from '../types'
 import { useGanttContext } from './useGanttContext'
 import { useGanttDrag } from './useGanttDrag'
 import { useRegisteredTask } from './useTaskRegistry'
@@ -16,6 +16,11 @@ export interface GanttItemProps {
   end?: Date | string | number
   progress?: number
   dependencies?: string[]
+  segments?: GanttSegment[]
+  deadline?: Date | string | number
+  constraint?: GanttConstraint
+  baselineStart?: Date | string | number
+  baselineEnd?: Date | string | number
   meta?: Record<string, unknown>
   /** Explicit row id (declarative mode, overrides the enclosing `GanttRow`). */
   rowId?: string
@@ -47,6 +52,11 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
     end: props.end ?? props.start ?? new Date(0),
     progress: props.progress,
     dependencies: props.dependencies,
+    segments: props.segments,
+    deadline: props.deadline,
+    constraint: props.constraint,
+    baselineStart: props.baselineStart,
+    baselineEnd: props.baselineEnd,
     meta: props.meta,
     ...(props.task as GanttTask | undefined),
     ...overrides,
@@ -67,14 +77,12 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
   const resolved = computed<ResolvedTask>(() => {
     if (props.task) return props.task as ResolvedTask
     return (
-      ctx.tasks.value.find((t) => t.id === input.value.id) ??
+      ctx.tasks.value.find(t => t.id === input.value.id) ??
       normalizeTask(input.value, rowId.value, order.value)
     )
   })
 
-  const overlapping = computed(
-    () => (ctx.rows.value[resolved.value.order]?.laneCount ?? 1) > 1,
-  )
+  const overlapping = computed(() => (ctx.rows.value[resolved.value.order]?.laneCount ?? 1) > 1)
 
   // True when the item's row belongs to a collapsed group. Declarative items
   // render themselves (unlike `GanttView`, which only renders `visibleTasks`),
@@ -86,7 +94,14 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
   const baseLeft = computed(() => ctx.dateToX(resolved.value.start))
 
   // Drag & drop: the original stays put; a live preview drives a translucent ghost.
-  const { dragging, moved, enabled: draggable, preview, previewLabel, onPointerDown } = useGanttDrag({
+  const {
+    dragging,
+    moved,
+    enabled: draggable,
+    preview,
+    previewLabel,
+    onPointerDown,
+  } = useGanttDrag({
     resolved,
     baseLeft,
   })
@@ -103,6 +118,32 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
 
   // Progress to render: the live drag value while dragging, else the resolved one.
   const liveProgress = computed(() => preview.value?.progress ?? resolved.value.progress)
+
+  // Split-task segments as percentages of the bar (`[start, end]`). Progress
+  // fills cumulatively through the segments' working time — earlier segments fill
+  // first — so the completion "flows" across the working spans (MS-Project style).
+  const segmentBars = computed(() => {
+    const segs = resolved.value.segments
+    if (!segs?.length) return []
+    const origin = resolved.value.start.getTime()
+    const span = resolved.value.end.getTime() - origin
+    if (span <= 0) return []
+    const clamp = (n: number) => Math.max(0, Math.min(100, n))
+    const totalWork = segs.reduce((sum, s) => sum + Math.max(0, s.end.getTime() - s.start.getTime()), 0)
+    const filledWork = (liveProgress.value / 100) * totalWork
+    let workBefore = 0
+    return segs.map(s => {
+      const segStart = s.start.getTime()
+      const segWork = Math.max(0, s.end.getTime() - segStart)
+      const fill = segWork > 0 ? Math.max(0, Math.min(1, (filledWork - workBefore) / segWork)) : 0
+      workBefore += segWork
+      return {
+        leftPct: clamp(((segStart - origin) / span) * 100),
+        widthPct: clamp((segWork / span) * 100),
+        progressPct: fill * 100,
+      }
+    })
+  })
 
   // Vertical band per overlap mode (lanes/cascade offset handled by the context).
   const rowStyle = computed(() => {
@@ -145,6 +186,7 @@ export function useGanttItem(props: GanttItemProps, overrides: Partial<GanttTask
     startResize,
     startProgress,
     liveProgress,
+    segmentBars,
     ghost,
     previewLabel,
     overlapping,

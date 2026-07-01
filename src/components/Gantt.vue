@@ -15,20 +15,25 @@ import type {
   GanttRowEvent,
   GanttScrollOptions,
   GanttTaskEvent,
+  GanttZoomEvent,
 } from '../types'
 import GanttRoot from './GanttRoot.vue'
 import GanttView from './GanttView.vue'
 
-const props = defineProps<GanttRootProps & {
-  /** Max height of the scroll viewport (number = px). Enables row virtualization. */
-  height?: number | string
-}>()
+const props = defineProps<
+  GanttRootProps & {
+    /** Max height of the scroll viewport (number = px). Enables row virtualization. */
+    height?: number | string
+  }
+>()
 
 const emit = defineEmits<{
   move: [event: GanttMoveEvent]
   resize: [event: GanttResizeEvent]
   progress: [event: GanttProgressEvent]
   'update:rows': [rows: GanttRowData[]]
+  'update:zoom': [id: string]
+  'zoom-change': [event: GanttZoomEvent]
   'group-toggle': [event: GanttGroupToggleEvent]
   'dependency-create': [event: GanttDependencyChange]
   'dependency-remove': [event: GanttDependencyChange]
@@ -54,14 +59,18 @@ defineSlots<{
   group?: (props: { group: unknown; collapsed: boolean; toggle: () => void }) => unknown
   groupBar?: (props: { group: unknown }) => unknown
   'group-bars'?: (props: { groups: unknown }) => unknown
+  baselines?: (props: { tasks: unknown }) => unknown
   corner?: (props: { config: unknown }) => unknown
   timeline?: (props: { config: unknown; visibleColumnsFor: unknown }) => unknown
   column?: (props: { column: unknown; tier: unknown }) => unknown
   bar?: (props: { task: unknown; progress: number }) => unknown
   milestone?: (props: { task: unknown }) => unknown
+  tooltip?: (props: { task: unknown }) => unknown
   bars?: (props: { tasks: unknown }) => unknown
   grid?: (props: { columns: unknown; rows: unknown }) => unknown
   conflicts?: (props: { conflicts: unknown }) => unknown
+  slack?: (props: { slack: unknown }) => unknown
+  deadlines?: (props: { tasks: unknown }) => unknown
   dependencies?: (props: { tasks: unknown }) => unknown
   today?: (props: { today: unknown; dateToX: unknown }) => unknown
   'body-extra'?: (props: { contentWidth: number; contentHeight: number }) => unknown
@@ -81,6 +90,9 @@ defineExpose({
     root.value?.scrollToDate(date, options),
   scrollToTask: (id: string, options?: GanttScrollOptions) => root.value?.scrollToTask(id, options),
   scrollToToday: (options?: GanttScrollOptions) => root.value?.scrollToToday(options),
+  setZoom: (id: string) => root.value?.setZoom(id),
+  zoomIn: () => root.value?.zoomIn(),
+  zoomOut: () => root.value?.zoomOut(),
 })
 </script>
 
@@ -92,6 +104,8 @@ defineExpose({
     @resize="emit('resize', $event)"
     @progress="emit('progress', $event)"
     @update:rows="emit('update:rows', $event)"
+    @update:zoom="emit('update:zoom', $event)"
+    @zoom-change="emit('zoom-change', $event)"
     @group-toggle="emit('group-toggle', $event)"
     @dependency-create="emit('dependency-create', $event)"
     @dependency-remove="emit('dependency-remove', $event)"
@@ -111,31 +125,61 @@ defineExpose({
     @dependency-click="emit('dependency-click', $event)"
   >
     <GanttView :height="height">
-      <template v-if="$slots.corner" #corner="slotProps"><slot name="corner" v-bind="slotProps" /></template>
-      <template v-if="$slots.timeline" #timeline="slotProps"><slot name="timeline" v-bind="slotProps" /></template>
-      <template v-if="$slots.sidebar" #sidebar="slotProps"><slot name="sidebar" v-bind="slotProps" /></template>
-      <template v-if="$slots.grid" #grid="slotProps"><slot name="grid" v-bind="slotProps" /></template>
-      <template v-if="$slots.bars" #bars="slotProps"><slot name="bars" v-bind="slotProps" /></template>
+      <template v-if="$slots.corner" #corner="slotProps"
+        ><slot name="corner" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.timeline" #timeline="slotProps"
+        ><slot name="timeline" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.sidebar" #sidebar="slotProps"
+        ><slot name="sidebar" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.grid" #grid="slotProps"
+        ><slot name="grid" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.bars" #bars="slotProps"
+        ><slot name="bars" v-bind="slotProps"
+      /></template>
       <template v-if="$slots['group-bars']" #group-bars="slotProps">
         <slot name="group-bars" v-bind="slotProps" />
+      </template>
+      <template v-if="$slots.baselines" #baselines="slotProps">
+        <slot name="baselines" v-bind="slotProps" />
       </template>
       <template v-if="$slots.conflicts" #conflicts="slotProps">
         <slot name="conflicts" v-bind="slotProps" />
       </template>
+      <template v-if="$slots.slack" #slack="slotProps">
+        <slot name="slack" v-bind="slotProps" />
+      </template>
+      <template v-if="$slots.deadlines" #deadlines="slotProps">
+        <slot name="deadlines" v-bind="slotProps" />
+      </template>
       <template v-if="$slots.dependencies" #dependencies="slotProps">
         <slot name="dependencies" v-bind="slotProps" />
       </template>
-      <template v-if="$slots.today" #today="slotProps"><slot name="today" v-bind="slotProps" /></template>
+      <template v-if="$slots.today" #today="slotProps"
+        ><slot name="today" v-bind="slotProps"
+      /></template>
       <template v-if="$slots['body-extra']" #body-extra="slotProps">
         <slot name="body-extra" v-bind="slotProps" />
       </template>
       <template v-if="$slots.row" #row="slotProps"><slot name="row" v-bind="slotProps" /></template>
-      <template v-if="$slots.group" #group="slotProps"><slot name="group" v-bind="slotProps" /></template>
-      <template v-if="$slots.groupBar" #groupBar="slotProps"><slot name="groupBar" v-bind="slotProps" /></template>
-      <template v-if="$slots.column" #column="slotProps"><slot name="column" v-bind="slotProps" /></template>
+      <template v-if="$slots.group" #group="slotProps"
+        ><slot name="group" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.groupBar" #groupBar="slotProps"
+        ><slot name="groupBar" v-bind="slotProps"
+      /></template>
+      <template v-if="$slots.column" #column="slotProps"
+        ><slot name="column" v-bind="slotProps"
+      /></template>
       <template v-if="$slots.bar" #bar="slotProps"><slot name="bar" v-bind="slotProps" /></template>
       <template v-if="$slots.milestone" #milestone="slotProps">
         <slot name="milestone" v-bind="slotProps" />
+      </template>
+      <template v-if="$slots.tooltip" #tooltip="slotProps">
+        <slot name="tooltip" v-bind="slotProps" />
       </template>
     </GanttView>
   </GanttRoot>

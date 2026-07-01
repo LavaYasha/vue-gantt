@@ -9,13 +9,21 @@
  * the rows/tasks that change) and never mutate the input.
  */
 import { toDate } from './context'
-import type { GanttGroup, GanttIssue, GanttMoveEvent, GanttRow, GanttTask } from './types'
+import type {
+  GanttConstraint,
+  GanttGroup,
+  GanttIssue,
+  GanttMoveEvent,
+  GanttRow,
+  GanttTask,
+  ResolvedTask,
+} from './types'
 
 // --- Lookups & traversal ----------------------------------------------------
 
 /** Flatten the two-level rows→tasks structure into a single task list. */
 export function flattenTasks(rows: GanttRow[]): GanttTask[] {
-  return rows.flatMap((row) => row.tasks ?? [])
+  return rows.flatMap(row => row.tasks ?? [])
 }
 
 /** Find a task (and its owning row) by id. */
@@ -24,7 +32,7 @@ export function findTask(
   id: string,
 ): { task: GanttTask; row: GanttRow } | undefined {
   for (const row of rows) {
-    const task = (row.tasks ?? []).find((t) => t.id === id)
+    const task = (row.tasks ?? []).find(t => t.id === id)
     if (task) return { task, row }
   }
   return undefined
@@ -32,7 +40,31 @@ export function findTask(
 
 /** Find a row by id. */
 export function findRow(rows: GanttRow[], id: string): GanttRow | undefined {
-  return rows.find((r) => r.id === id)
+  return rows.find(r => r.id === id)
+}
+
+// --- Sorting & filtering ----------------------------------------------------
+
+/**
+ * Return rows sorted by `compare`, without mutating the input. The chart stays
+ * controlled: pass the result back as `rows` (the library re-derives each row's
+ * render order from the new array index). Build comparators from row data —
+ * e.g. by name (`a.name`), by earliest task (`tasksExtent([a])`), or by progress
+ * (`rollupProgress(a.tasks ?? [])`).
+ */
+export function sortRows(
+  rows: GanttRow[],
+  compare: (a: GanttRow, b: GanttRow) => number,
+): GanttRow[] {
+  return [...rows].sort(compare)
+}
+
+/**
+ * Return only the rows matching `predicate`, without mutating the input. Pass the
+ * result back as `rows` to show a filtered view (the library re-derives order).
+ */
+export function filterRows(rows: GanttRow[], predicate: (row: GanttRow) => boolean): GanttRow[] {
+  return rows.filter(predicate)
 }
 
 // --- Immutable edits --------------------------------------------------------
@@ -44,14 +76,14 @@ export function findRow(rows: GanttRow[], id: string): GanttRow | undefined {
  */
 export function applyMove(rows: GanttRow[], e: GanttMoveEvent): GanttRow[] {
   const found = findTask(rows, e.id)
-  if (!found || !rows.some((r) => r.id === e.toRowId)) return rows
+  if (!found || !rows.some(r => r.id === e.toRowId)) return rows
   const moved: GanttTask = { ...found.task, start: e.start, end: e.end }
 
-  return rows.map((row) => {
-    const has = (row.tasks ?? []).some((t) => t.id === e.id)
+  return rows.map(row => {
+    const has = (row.tasks ?? []).some(t => t.id === e.id)
     const isTarget = row.id === e.toRowId
     if (!has && !isTarget) return row
-    const tasks = (row.tasks ?? []).filter((t) => t.id !== e.id)
+    const tasks = (row.tasks ?? []).filter(t => t.id !== e.id)
     if (isTarget) tasks.push(moved)
     return { ...row, tasks }
   })
@@ -59,25 +91,23 @@ export function applyMove(rows: GanttRow[], e: GanttMoveEvent): GanttRow[] {
 
 /** Patch a task by id (shallow merge). No-op if the id is unknown. */
 export function updateTask(rows: GanttRow[], id: string, patch: Partial<GanttTask>): GanttRow[] {
-  return rows.map((row) =>
-    (row.tasks ?? []).some((t) => t.id === id)
-      ? { ...row, tasks: (row.tasks ?? []).map((t) => (t.id === id ? { ...t, ...patch } : t)) }
+  return rows.map(row =>
+    (row.tasks ?? []).some(t => t.id === id)
+      ? { ...row, tasks: (row.tasks ?? []).map(t => (t.id === id ? { ...t, ...patch } : t)) }
       : row,
   )
 }
 
 /** Append a task to a row. No-op if the row id is unknown. */
 export function addTask(rows: GanttRow[], rowId: string, task: GanttTask): GanttRow[] {
-  return rows.map((row) =>
-    row.id === rowId ? { ...row, tasks: [...(row.tasks ?? []), task] } : row,
-  )
+  return rows.map(row => (row.id === rowId ? { ...row, tasks: [...(row.tasks ?? []), task] } : row))
 }
 
 /** Remove a task by id from whichever row holds it. */
 export function removeTask(rows: GanttRow[], id: string): GanttRow[] {
-  return rows.map((row) =>
-    (row.tasks ?? []).some((t) => t.id === id)
-      ? { ...row, tasks: (row.tasks ?? []).filter((t) => t.id !== id) }
+  return rows.map(row =>
+    (row.tasks ?? []).some(t => t.id === id)
+      ? { ...row, tasks: (row.tasks ?? []).filter(t => t.id !== id) }
       : row,
   )
 }
@@ -125,8 +155,8 @@ export function rollupProgress(tasks: GanttTask[]): number {
 /** Ids of tasks that declare `id` in their `dependencies` (reverse links). */
 export function getDependents(rows: GanttRow[], id: string): string[] {
   return flattenTasks(rows)
-    .filter((t) => (t.dependencies ?? []).includes(id))
-    .map((t) => t.id)
+    .filter(t => (t.dependencies ?? []).includes(id))
+    .map(t => t.id)
 }
 
 /**
@@ -145,7 +175,7 @@ export function removeDependency(rows: GanttRow[], from: string, to: string): Ga
   const target = findTask(rows, to)
   if (!target || !(target.task.dependencies ?? []).includes(from)) return rows
   return updateTask(rows, to, {
-    dependencies: (target.task.dependencies ?? []).filter((d) => d !== from),
+    dependencies: (target.task.dependencies ?? []).filter(d => d !== from),
   })
 }
 
@@ -155,7 +185,7 @@ export function removeDependency(rows: GanttRow[], from: string, to: string): Ga
  */
 export function detectCycles(rows: GanttRow[]): string[][] {
   const tasks = flattenTasks(rows)
-  const deps = new Map(tasks.map((t) => [t.id, t.dependencies ?? []]))
+  const deps = new Map(tasks.map(t => [t.id, t.dependencies ?? []]))
   const WHITE = 0
   const GRAY = 1
   const BLACK = 2
@@ -192,9 +222,9 @@ export function detectCycles(rows: GanttRow[]): string[][] {
  */
 export function topologicalOrder(rows: GanttRow[]): string[] {
   const tasks = flattenTasks(rows)
-  const ids = new Set(tasks.map((t) => t.id))
-  const indegree = new Map<string, number>(tasks.map((t) => [t.id, 0]))
-  const adjacency = new Map<string, string[]>(tasks.map((t) => [t.id, []]))
+  const ids = new Set(tasks.map(t => t.id))
+  const indegree = new Map<string, number>(tasks.map(t => [t.id, 0]))
+  const adjacency = new Map<string, string[]>(tasks.map(t => [t.id, []]))
 
   for (const t of tasks) {
     for (const dep of t.dependencies ?? []) {
@@ -204,7 +234,7 @@ export function topologicalOrder(rows: GanttRow[]): string[] {
     }
   }
 
-  const queue = tasks.filter((t) => (indegree.get(t.id) ?? 0) === 0).map((t) => t.id)
+  const queue = tasks.filter(t => (indegree.get(t.id) ?? 0) === 0).map(t => t.id)
   const order: string[] = []
   while (queue.length) {
     const id = queue.shift()!
@@ -229,7 +259,7 @@ export function topologicalOrder(rows: GanttRow[]): string[] {
  */
 export function criticalPath(rows: GanttRow[]): string[] {
   if (detectCycles(rows).length) return []
-  const byId = new Map(flattenTasks(rows).map((t) => [t.id, t]))
+  const byId = new Map(flattenTasks(rows).map(t => [t.id, t]))
   const finish = new Map<string, number>()
   const prev = new Map<string, string | null>()
   let bestId: string | null = null
@@ -262,6 +292,40 @@ export function criticalPath(rows: GanttRow[]): string[] {
   return path
 }
 
+const MS_PER_DAY = 86_400_000
+
+/**
+ * Free float per task, in **days**: how far a task's finish can slip before it
+ * collides with its nearest finish-to-start successor's start — i.e. the gap
+ * `min(successor.start − task.end)`, clamped to ≥ 0. Tasks with no successors,
+ * or with no positive gap (back-to-back / on the critical path), are absent from
+ * the map. Date-based, so it lines up with where bars actually sit.
+ */
+export function slack(rows: GanttRow[]): Map<string, number> {
+  const tasks = flattenTasks(rows)
+  // Reverse links: predecessor id → its successors' start times.
+  const successorStarts = new Map<string, number[]>()
+  for (const t of tasks) {
+    if (!t.dependencies?.length) continue
+    const start = toDate(t.start).getTime()
+    for (const dep of t.dependencies) {
+      const list = successorStarts.get(dep)
+      if (list) list.push(start)
+      else successorStarts.set(dep, [start])
+    }
+  }
+
+  const result = new Map<string, number>()
+  for (const t of tasks) {
+    const starts = successorStarts.get(t.id)
+    if (!starts) continue
+    const end = toDate(t.end ?? t.start).getTime()
+    const gap = Math.min(...starts) - end
+    if (gap > 0) result.set(t.id, gap / MS_PER_DAY)
+  }
+  return result
+}
+
 /**
  * Push finish-to-start successors forward so none starts before a predecessor
  * ends, preserving each task's duration. Pass `changedId` to cascade only that
@@ -270,7 +334,7 @@ export function criticalPath(rows: GanttRow[]): string[] {
  */
 export function autoSchedule(rows: GanttRow[], changedId?: string): GanttRow[] {
   const tasks = flattenTasks(rows)
-  const byId = new Map(tasks.map((t) => [t.id, t]))
+  const byId = new Map(tasks.map(t => [t.id, t]))
   const start = new Map<string, number>()
   const end = new Map<string, number>()
   for (const t of tasks) {
@@ -284,13 +348,17 @@ export function autoSchedule(rows: GanttRow[], changedId?: string): GanttRow[] {
   for (const id of topologicalOrder(rows)) {
     const t = byId.get(id)
     if (!t || (allowed && !allowed.has(id))) continue
+    const s = start.get(id)!
+    const dur = end.get(id)! - s
     let required = -Infinity
     for (const dep of t.dependencies ?? []) {
       const e = end.get(dep)
       if (e != null && e > required) required = e
     }
-    if (required > -Infinity && start.get(id)! < required) {
-      const dur = end.get(id)! - start.get(id)!
+    // A lower-bound constraint raises the start floor alongside dependencies.
+    const floor = constraintFloor(t.constraint, dur)
+    if (floor != null && floor > required) required = floor
+    if (required > -Infinity && s < required) {
       start.set(id, required)
       end.set(id, required + dur)
       shifted.add(id)
@@ -298,11 +366,11 @@ export function autoSchedule(rows: GanttRow[], changedId?: string): GanttRow[] {
   }
 
   if (!shifted.size) return rows
-  return rows.map((row) =>
-    (row.tasks ?? []).some((t) => shifted.has(t.id))
+  return rows.map(row =>
+    (row.tasks ?? []).some(t => shifted.has(t.id))
       ? {
           ...row,
-          tasks: (row.tasks ?? []).map((t) =>
+          tasks: (row.tasks ?? []).map(t =>
             shifted.has(t.id)
               ? { ...t, start: new Date(start.get(t.id)!), end: new Date(end.get(t.id)!) }
               : t,
@@ -310,6 +378,53 @@ export function autoSchedule(rows: GanttRow[], changedId?: string): GanttRow[] {
         }
       : row,
   )
+}
+
+/**
+ * The start floor (epoch ms) a lower-bound constraint imposes on a task, or
+ * `null`. A forward-only scheduler can only push starts later, so only the
+ * "no-earlier"/"must" bounds contribute a floor; the "no-later" bounds don't.
+ */
+function constraintFloor(constraint: GanttConstraint | undefined, durMs: number): number | null {
+  if (!constraint) return null
+  const date = toDate(constraint.date).getTime()
+  switch (constraint.type) {
+    case 'start-no-earlier-than':
+    case 'must-start-on':
+      return date
+    case 'finish-no-earlier-than':
+    case 'must-finish-on':
+      return date - durMs
+    default:
+      return null
+  }
+}
+
+/** Whether a task finishes past its `deadline` (false when it has none). */
+export function isOverdue(task: Pick<ResolvedTask, 'end' | 'deadline'>): boolean {
+  return task.deadline != null && task.end > task.deadline
+}
+
+/**
+ * Whether a task breaches an upper/exact-bound constraint (`*-no-later-than` or
+ * `must-*-on` pushed past its date). Lower-only bounds — honored by
+ * `autoSchedule` — never "violate". False when the task has no constraint.
+ */
+export function violatesConstraint(
+  task: Pick<ResolvedTask, 'start' | 'end' | 'constraint'>,
+): boolean {
+  const c = task.constraint
+  if (!c) return false
+  switch (c.type) {
+    case 'start-no-later-than':
+    case 'must-start-on':
+      return task.start > c.date
+    case 'finish-no-later-than':
+    case 'must-finish-on':
+      return task.end > c.date
+    default:
+      return false
+  }
 }
 
 // --- Validation -------------------------------------------------------------
@@ -325,7 +440,11 @@ export function validateRows(rows: GanttRow[], groups?: GanttGroup[]): GanttIssu
   const rowIds = new Set<string>()
   for (const row of rows) {
     if (rowIds.has(row.id)) {
-      issues.push({ type: 'duplicate-row-id', id: row.id, message: `Duplicate row id "${row.id}".` })
+      issues.push({
+        type: 'duplicate-row-id',
+        id: row.id,
+        message: `Duplicate row id "${row.id}".`,
+      })
     }
     rowIds.add(row.id)
   }
@@ -341,7 +460,11 @@ export function validateRows(rows: GanttRow[], groups?: GanttGroup[]): GanttIssu
 
   for (const t of tasks) {
     if (t.type !== 'milestone' && t.end != null && toDate(t.end) < toDate(t.start)) {
-      issues.push({ type: 'invalid-range', id: t.id, message: `Task "${t.id}" ends before it starts.` })
+      issues.push({
+        type: 'invalid-range',
+        id: t.id,
+        message: `Task "${t.id}" ends before it starts.`,
+      })
     }
     for (const dep of t.dependencies ?? []) {
       if (!taskIds.has(dep)) {
@@ -355,7 +478,7 @@ export function validateRows(rows: GanttRow[], groups?: GanttGroup[]): GanttIssu
   }
 
   if (groups) {
-    const groupIds = new Set(groups.map((g) => g.id))
+    const groupIds = new Set(groups.map(g => g.id))
     for (const row of rows) {
       if (row.groupId && !groupIds.has(row.groupId)) {
         issues.push({
